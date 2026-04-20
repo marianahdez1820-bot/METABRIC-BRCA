@@ -155,7 +155,29 @@ fit_km <- survfit(surv_obj ~ risk_group, data = test_data)
 
 # 5.3.2 Plot
 
-ggsurvplot(fit_km, data = test_data, title = "Recurrence ER+", ylab = "Recurrence probability")
+ggsurvplot(fit_km,
+           data = test_data,
+           pval = TRUE, 
+           risk.table = TRUE,
+           
+           title = "Recurrence ER+ METABRIC",
+           ylab = "Recurrence probability",
+           font.title = 30,
+           legend = "bottom",
+           font.legend = 22,
+           legend.title = "Risk group",
+           font.legend.title = 20,
+           legend.labs = c("Low risk", "High risk"),
+           font.legend.labs = 18,
+           xlab = "Time (months)",
+           
+           xlim = c(0, 300),         # Zoom in
+           break.time.by = 50,      # X axis breaks
+           ggtheme = theme_minimal(), # ggplot2 theme
+           
+           linewidth = 3,                 # Line size
+           palette = c("#c380d3", "#ff89d4"),
+)
 
 # 5.4 Tables
 
@@ -237,3 +259,23 @@ independent_prog <- coxph(surv_obj ~ HORMONE + CHEMO + SURGERY + MENO + HER2 + A
                           data = proof_genes_pt.cox) %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE)
 
+
+
+
+print(independent_prog, n = 21)
+
+num_param_compare <- c(9:21)
+
+cat(paste0("Signature with ", length(coef_tbl$term), " genes (", paste(coef_tbl$term, collapse = ", "), ")"),
+    paste0("The selected parameters were an alpha of ", best_params$mixture, " and a lambda of ", best_params$penalty),
+    paste0("The signature got a C-score of ", concordancia$concordance),
+    paste0("HR of ", round(summary_cox$coefficients[2], 2), " (CI 95% of ", round(summary_cox$conf.int[3], 2), " - ", round(summary_cox$conf.int[4], 2), " pval ", summary_cox$coefficients[5], ")"),
+    paste0("AUC at 3 years of ", round(auc[1,], 2), " at 5 years of ", round(auc[2,], 2), " at 6 years of ", round(auc[3,], 2), " and at 10 years of ", round(auc[4,], 2)),
+    paste0("As an independence factor it has an HR of ", round(independent_prog$estimate[independent_prog$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog$conf.low[independent_prog$term == "SCORE"], 2), " - ", round(independent_prog$conf.high[independent_prog$term == "SCORE"], 2), " pval of ", independent_prog$p.value[independent_prog$term == "SCORE"], ")"),
+    sep = ". "
+)
+
+cat(paste0(independent_prog$term[num_param_compare], " with its HR of ", round(independent_prog$estimate[num_param_compare], 2), " (CI 95% of ", round(independent_prog$conf.low[num_param_compare], 2), " - ", round(independent_prog$conf.high[num_param_compare], 2), " pval of ", independent_prog$p.value[num_param_compare], ")"),
+    sep = ". "
+    )
+independent_prog[num_param_compare, c(1, 2, 5, 6, 7)]
