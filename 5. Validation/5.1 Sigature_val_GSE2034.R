@@ -155,8 +155,6 @@ proof_genes_pt_gse2034 <- proof_genes_pt_gse2034[,colnames(proof_genes_pt_gse203
 
 # 4.- Asigning signature genes --------------------------------------------
 
-# 4.1 List of genes described in the differential expression as being of prognosis for late death
-
 colnames(proof_genes_pt_gse2034) <- make.names(colnames(proof_genes_pt_gse2034))
 
 common_genes_meta.gse2034 <- intersect(proof_genes, colnames(proof_genes_pt_gse2034))
