@@ -54,13 +54,15 @@ metadata_gse.2034  <- metadata_gse.2034  %>%
     EVENT_MON = as.numeric(time.to.relapse.or.last.follow.up..months.), # Object to evaluate time to event
     id = GEO.asscession.number,
     ER_STAT = ER.Status,
-    BRAIN_REL = Brain.relapses..1.yes..0.no.
+    BRAIN_REL = Brain.relapses..1.yes..0.no.,
+    LYMPH = lymph.node.status
   ) %>% 
   dplyr::select(EVENT_STAT,
                 EVENT_MON,
                 ER_STAT,
                 id,
                 BRAIN_REL,
+                LYMPH
                 
   )
 
@@ -145,11 +147,34 @@ proof_genes_pt_gse2034 <- as.data.frame(gene_expres_matrix)
 metadata.gse.2034_er_pos <- metadata_gse.2034  %>% 
   filter(ER_STAT == "ER+")
 
-# 5.5 Keep oly patients that are found on the counts
+# 5.5 Keep oly patients that are found on the metadata
 
 proof_genes_pt_gse2034 <- proof_genes_pt_gse2034[,colnames(proof_genes_pt_gse2034) %in% metadata.gse.2034_er_pos$file_name] %>% 
   as.data.frame() %>% 
   t() 
+
+# 4.- Asigning signature genes --------------------------------------------
+
+# 4.1 List of genes described in the differential expression as being of prognosis for late death
+
+colnames(proof_genes_pt_gse2034) <- make.names(colnames(proof_genes_pt_gse2034))
+
+common_genes_meta.gse2034 <- intersect(proof_genes, colnames(proof_genes_pt_gse2034))
+
+
+# 4.2 Object with all the patients and expression of only the genes of interest
+
+proof_genes_pt_gse2034 <- proof_genes_pt_gse2034[,colnames(proof_genes_pt_gse2034) %in% common_genes_meta.gse2034]
+
+# 4.3 Stop running if there are less genes in TCGA than on the signature
+
+if(length(common_genes_meta.gse2034) < length(proof_genes)){
+  stop(paste("There are missing genes in TCGA relative to the signature, missing ", length(proof_genes) - length(common_genes_meta.gse2034), " gene(s): "),  paste0(proof_genes[!(proof_genes %in% common_genes_meta.gse2034)], sep = ", ")) # Script stops here
+}else{
+  print("All genes in the signature are on TCGA")
+}
+
+
 
 library(survival)
 
@@ -170,13 +195,6 @@ proof_genes_pt_gse2034 <-
                 - BRAIN_REL)
 
 
-# Find genes present in both data sets
-common_genes_meta.gse2034 <- intersect(proof_genes, colnames(proof_genes_pt_gse2034))
-
-# Check how many are lost
-print(paste("Original:", length(proof_genes), "Common:", length(common_genes_meta.gse2034)))
-
-# If there are gene missing, run the lin reg with common_genes as the gene list
 
 
 
@@ -204,6 +222,10 @@ validation_test <- coxph(Surv(EVENT_MON,  EVENT_STAT) ~ .pred_linear_pred, data 
 
 summary(validation_test)
 
+# 6.8 Calculate the actual Concordance Index
+
+c_index_results.2034 <- concordance(Surv(EVENT_MON, EVENT_STAT) ~ .pred_linear_pred, 
+                                    data = gse2034_results)
 
 library(survminer)
 
@@ -223,7 +245,22 @@ ggsurvplot(km_fit,
            pval = TRUE, 
            risk.table = TRUE,
            title = "Validation in GSE2034 (Untreated Cohort)",
-           palette = c("#E41A1C", "#377EB8"))
+           font.title = 30,
+           legend = "bottom",
+           font.legend = 22,
+           legend.title = "Risk group",
+           font.legend.title = 20,
+           legend.labs = c("High risk", "Low risk"),
+           font.legend.labs = 18,
+           xlab = "Time (months)",
+           
+           xlim = c(0, 180),         # Zoom in
+           break.time.by = 50,      # X axis breaks
+           ggtheme = theme_minimal(), # ggplot2 theme
+           
+           linewidth = 3, 
+           palette = c("#E41A1C", "#377EB8"),
+           )
 
 
 gse2034_results <- gse2034_results %>%
@@ -246,6 +283,11 @@ res_auc <- timeROC(T = gse2034_results$EVENT_MON,
                    cause = 1, # The event code
                    times = c(36, 60, 120), # 3, 5, and 10 years
                    iid = TRUE)
+
+# 6.9.2 View the AUC values
+
+res_auc_gse2034 <- res_auc$AUC %>% 
+  as.data.frame()
 
 # View the AUC values
 
@@ -272,3 +314,16 @@ proof_genes_pt.gse2034.cox <-
 independent_prog.gse2034 <- coxph(surv_obj ~ SCORE, 
                                   data = proof_genes_pt.gse2034.cox) %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE)
+
+
+
+num_param_compare <- c(9:21)
+
+cat(paste0("The signature got a C-score of ", round(c_index_results.2034$concordance, 2)),
+    paste0("an HR of ", round(summary_gse2034$coefficients[2], 2), " (CI 95% of ", round(summary_gse2034$conf.int[3], 2), " - ", round(summary_gse2034$conf.int[4], 2), " pval ", summary_gse2034$coefficients[5], ")"),
+    paste0("AUC at 3 years of ", round(res_auc_gse2034[1,], 2), " at 5 years of ", round(res_auc_gse2034[2,], 2), " and at 6 years of "),
+    paste0("As an independence factor it has an HR of ", round(independent_prog.gse2034$estimate[independent_prog.gse2034$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog.gse2034$conf.low[independent_prog.gse2034$term == "SCORE"], 2), " - ", round(independent_prog.gse2034$conf.high[independent_prog.gse2034$term == "SCORE"], 2), " pval of ", independent_prog.gse2034$p.value[independent_prog.gse2034$term == "SCORE"], ")"),
+    sep = ". "
+)
+
+
