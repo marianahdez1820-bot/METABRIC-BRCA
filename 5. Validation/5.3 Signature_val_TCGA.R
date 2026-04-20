@@ -3,6 +3,7 @@ library(SummarizedExperiment)
 library(tidyverse)
 library(AnnotationDbi)
 library(org.Hs.eg.db)
+library(survival)
 
 
 
@@ -41,266 +42,272 @@ brca_matrix <- read.csv("fpkm_unstrand.csv") %>%
 brca_data <- brca_matrix %>% 
   as.data.frame()
 
+# 1.4.2 Convert the dots to slashes
 
 colnames(brca_data) <- gsub("\\.", "-", colnames(brca_data))
+
+
+# 1.5.- Eliminate duplicates ----------------------------------------------
+
+
 # 1.5 Extract sample type from TCGA barcode
 
 # 1.5.2 Select the 14th - 16th value which correspond to sample type codes https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/sample-type-codes
+# this to then select only the samples that correspond to primary tumors
 
 sample_type_full <- substr(colnames(brca_data), 14, 16)
 
 # 1.5.3 Maintain only primary tumor samples so as to avoid duplicates
 
+# 1.5.3.1 Keep only counts that correspond to primary tumor
+
 brca_data <- brca_data[, sample_type_full == "01A"]
-brca_data_find <- t(brca_data) %>% 
-  as.data.frame() %>% 
-  rownames_to_column("PATIENT_ID")
+
+# 1.5.4 Assign to new object that will be modified to eliminate duplicates
 
 brca_data2 <- brca_data
 
+# 1.5.4.2 Keep the names up until the -01 so as to have it in the same nomenclature as the metadata
+
 colnames(brca_data2) <- substr(colnames(brca_data2), 1, 15)
 
-# We can see that there are 5 patients with 2 samples of the same tumor
+# 1.5.4.3 We can see that there are 5 patients with 2 samples of the same tumor
 
 names(brca_data)[substr(colnames(brca_data), 1, 15) %in% names(brca_data2)[duplicated(names(brca_data2))]]
 
-# So we keep only the patient sample with highest variance
+# 1.5.5 So we keep only the patient sample with highest variance
 
-brca_data2 <- brca_data
-
-colnames(brca_data2) <- substr(colnames(brca_data2), 1, 15)
-
+# 1.5.5.2 Calculate variance
 
 sample_variance <- apply(brca_data2, 2, var, na.rm = TRUE)
 
+# 1.5.5.3 Match variance with the names 
+
 df <- data.frame(
-  sample = colnames(brca_data2),
-  variance = sample_variance
+  sample = colnames(brca_data2), # Column with the colnames
+  equivalent = colnames(brca_data), # Column with the full names so as to then reassign to the counts data
+  variance = sample_variance # column with the variance
 )
 
-selected_samples <- df %>%
-  group_by(sample) %>%
-  slice_max(order_by = variance, n = 1, with_ties = FALSE) %>% 
-  pull(sample)
+# 1.5.5.3 Group by and keep only the sample with highest variance
 
-brca_data2 <- brca_data2[, selected_samples]
+selected_samples <- df %>%
+  group_by(sample) %>% # Group by the reduced name (TCGA-XX-XXXX-01)
+  slice_max(order_by = variance, n = 1, with_ties = FALSE) %>% # Keep only the highest variance
+  pull(equivalent) # Extract the complete name (TCGA-XX-XXXX-01A-XXX-XXXX-XX)
+
+# 1.6 Keep only the counts of the unique
+
+brca_data_unique <- brca_data[, selected_samples]
+
+# 1.7 Convert back to names compatible with metadata
+
+colnames(brca_data_unique) <- substr(colnames(brca_data_unique), 1, 15)
 
 # 2.- Metadata ------------------------------------------------------------
+
 library(UCSCXenaTools)
 
 
-# 1. Define the destination directory on your D drive
-my_dir <- "D:/tcga/GDCdata/Metadata"
-if (!dir.exists(my_dir)) dir.create(my_dir, recursive = TRUE)
+# 2.1 Generate and Query
 
-# 2. Generate and Query
-# We use the specific TCGA BRCA clinical matrix from the public hub
 data_query <- XenaGenerate(subset = XenaDatasets == "TCGA.BRCA.sampleMap/BRCA_clinicalMatrix") %>% 
   XenaQuery()
 
-# 3. Download with a specific destination
-# We add 'destdir' to ensure it goes to your D drive instead of a temp folder
-xe_download <- XenaDownload(data_query, destdir = my_dir)
+# 2.2 Download 
 
-# 4. Prepare (Load) the data
-# Instead of passing a string, we pass the actual download object 
-# This prevents the "res not found" error
+xe_download <- XenaDownload(data_query, destdir = "D:/tcga/GDCdata/Metadata")
+
+# 2.3 Prepare (Load) the data
+
 brca_clinical <- XenaPrepare(xe_download)
 
+# 2.4 Create the Recurrence variables
 
 
-brca_clinical$days_to_last_followup
-
-
-
-# 1. Create the Recurrence variables
-refined_data <- brca_clinical %>%
+refined_data <- 
+  brca_clinical %>%
   mutate(
-    # Create the binary EVENT (1 = Yes, 0 = No/Censored)
-    event = ifelse(OS_event_nature2012 == "1", 1, 0),
-    
-    # Calculate the TIME in months
-    # Logic: If they recurred, use the 'days_to_new_tumor' column.
-    # If they didn't recur, use 'days_to_last_followup' (this is called Censoring).
-    event_mon = OS_Time_nature2012,
-    # Convert to Months for the - gene model
-    event_mon = event_mon / 30.44
+    SURVIVAL = ifelse(vital_status == "DECEASED", 1, 0),
+    SURVIVAL_MON = ifelse(!is.na(days_to_death) & days_to_death >= 0,
+                          days_to_death, # If they died they have this parameter
+                          days_to_last_followup # Else they have this parameter
+    ) / 30.4166667,
+    RECURRENCE = ifelse(
+      new_neoplasm_event_type %in% c("Locoregional Recurrence", "Distant Metastasis"),
+      1,
+      0
+    ),
+    RECURRENCE_MON = ifelse(
+      RECURRENCE == 1,
+      days_to_new_tumor_event_after_initial_treatment,
+      coalesce(days_to_last_followup, days_to_death)
+    ) / 30.4166667
   ) %>%
-  # 2. Filter for ER status
   filter(
-    ER_Status_nature2012 == "Positive", # Only ER+
-    event_mon > 0               # Remove invalid/negative entries
+    breast_carcinoma_estrogen_receptor_status == "Positive" # Only ER+,
   ) 
 
-# Preview the new columns
-head(refined_data)
 
 
-# Count object that corresponds to the metadata patients
-brca_data2 <- brca_data2[, colnames(brca_data2) %in% refined_data$sampleID]
+# 2.5 To maintain the samples of the primary tumor and eliminate duplicates as done with counts data
+
+sample_type_full2 <- substr(refined_data$sampleID, 14, 15)
+
+refined_data_unique <- refined_data
+
+refined_data_unique <- refined_data_unique[sample_type_full2 == "01",]
+
+
+# 2.6 Count object that corresponds to the metadata patients
+
+brca_data_filtered <- brca_data_unique[, colnames(brca_data_unique) %in% refined_data_unique$sampleID]
+
+# 2.7 Since there are missing patients since the first data we also filter out patients in metadata that arent on counts 
+
+refined_data_unique <- refined_data_unique[refined_data_unique$sampleID %in% colnames(brca_data_filtered),]
+
+
 
 # 3.- Deleting duplicates and asigning ensembl as rownames ----------------
 
-
 # 3.1 Deleting the version of ensembl and keeping only the full name
 
-brca_data2$ensembl <- gsub("\\..*", "", rownames(brca_data2))
+counts_data_duplicates <- 
+  brca_data_filtered %>% 
+  rownames_to_column("ensembl_version") %>% 
+  mutate(ensembl = gsub("\\..*", "", ensembl_version)) %>% 
+  column_to_rownames("ensembl_version")
 
- 
-# 3.2 Variance
+# 3.2 Asign symbol as a column
 
-numeric_data <- brca_data2 %>%
-  dplyr::select(where(is.numeric))
-
-brca_data2$variance <- apply(numeric_data, 1, var)
-
-# 3.2.2 Only mantain the version of the gene duplicate with higher variance
-
-brca_data.unique <- brca_data2 %>% # Initial data
-  group_by(ensembl) %>% # Group by ensembl
-  slice_max(order_by = variance, n = 1, with_ties = FALSE) %>% # Order by variance and keep the highest
-  ungroup() %>% 
-  column_to_rownames("ensembl") %>% # Asign ensembl as rownames
-  dplyr::select( - variance) # Delete variance column
-  
-# 3.3 Create object with smbol an genetype
-
-gene_info <- AnnotationDbi::select(org.Hs.eg.db,
-                    keys = rownames(brca_data.unique),
-                    columns = c("SYMBOL", "GENETYPE"),
-                    keytype = "ENSEMBL")
-
-# 3.3.2 Create object with only protein coding genes
-
-protein_coding <- gene_info %>%
-  filter(GENETYPE == "protein-coding")
-
-
-# 3.4 Keep counts of only protein coding genes
-
-brca_data.unique <-  brca_data.unique[
-  rownames(brca_data.unique) %in% protein_coding$ENSEMBL, 
-]
-
-# 3.5 Asign symbol as a column
-
-brca_data.unique$symbol <- mapIds(
+counts_data_duplicates$symbol <- mapIds(
   org.Hs.eg.db,
-  keys = rownames(brca_data.unique), # A donde va a buscar
+  keys = counts_data_duplicates$ensembl, # A donde va a buscar
   column = "SYMBOL",  # Nueva columna con ese formato
   keytype = "ENSEMBL",  # Que formato va a buscar en keys
   multiVals = "first") # Que hacer si hay varios del mismo Key
 
 
+# 3.2 Variance
+
+numeric_data <- counts_data_duplicates %>%
+  dplyr::select(where(is.numeric))
+
+counts_data_duplicates$variance <- apply(numeric_data, 1, var)
+
+
+# 3.2.2 Only mantain the version of the gene duplicate with higher variance
+
+counts_data.tcga <- counts_data_duplicates %>% # Initial data
+  group_by(symbol) %>% # Group by ensembl
+  slice_max(order_by = variance, n = 1, with_ties = FALSE) %>% # Order by variance and keep the highest
+  ungroup() %>% 
+  rownames_to_column("genes") %>% 
+  dplyr::select( - variance, 
+                 - ensembl,
+                 - genes) %>% # Delete variance, and both of the ensembl ids columns
+  filter(!is.na(symbol)) %>%  # Delete those that had a NA in symbol
+  column_to_rownames("symbol")
 
 
 # 4.- Asigning signature genes --------------------------------------------
 
+# 4.1 List of genes described in the differential expression as being of prognosis for late death
 
+rownames(counts_data.tcga) <- make.names(rownames(counts_data.tcga))
+
+common_genes_meta.tcga <- intersect(proof_genes, rownames(counts_data.tcga))
 
 
 # 4.2 Object with all the patients and expression of only the genes of interest
 
-late_genes.patients_tcga <- brca_data.unique[brca_data.unique$symbol %in% late_death.genes, ]
+proof_genes_pt.tcga <- counts_data.tcga[rownames(counts_data.tcga) %in% common_genes_meta.tcga, ]
 
+# 4.3 Stop running if there are less genes in TCGA than on the signature
 
-# 4.1 List of genes described in the differential expression as being of prognosis for late death
-
-common_genes_meta.tcga <- intersect(boruta_signature, late_genes.patients_tcga$symbol)
-
-
-
-late_genes.patients_tcga <- late_genes.patients_tcga %>% 
-  mutate(var = matrixStats::rowVars(as.matrix(dplyr::select(., -symbol)))) %>% 
-  dplyr::group_by(symbol) %>% 
-  slice_max(order_by = var, n = 1, with_ties = FALSE) %>%
-  mutate(var = NULL) %>% 
-  ungroup() %>% 
-  column_to_rownames("symbol")
+if(length(common_genes_meta.tcga) < length(proof_genes)){
+    stop(paste("There are missing genes in TCGA relative to the signature, missing ", length(proof_genes) - length(common_genes_meta.tcga), " gene(s): "),  paste0(proof_genes[!(proof_genes %in% common_genes_meta.tcga)], sep = ", ")) # Script stops here
+}else{
+  print("All genes in the signature are on TCGA")
+}
 
 
 
+# 5.- Prepare object for validation ---------------------------------------
+
+# 5.1 Transpose first so samples are rows, dont scale because the bake in recipe does that 
+
+tcga_transposed <- 
+  t(proof_genes_pt.tcga)
+
+# 5.2 Log2 Transform 
+
+tcga_log <- 
+  log2(tcga_transposed + 1)
+
+# 5.3 Assign log to the object for ML
+
+proof_genes_pt.tcga <- 
+  tcga_log %>% as.data.frame()
 
 
-microarray_data$variance <- microarray_data.var
+# 5.4 Check that the patients are in the same order
 
-# 1.2.4 Only maintain the version of the gene duplicate with higher variance
-
-microarray_data.unique <- microarray_data %>% # Initial data
-  group_by(Hugo_Symbol) %>% # Group by HUGO symbol
-  slice_max(order_by = variance, n = 1) %>% # Order by variance and keep the highest
-  ungroup()
+refined_data_unique <- 
+  refined_data_unique[refined_data_unique$sampleID %in% rownames(proof_genes_pt.tcga),]
 
 
-# 1. Transpose first so samples are rows
-tcga_transposed <- t(late_genes.patients_tcga)
+all(rownames(proof_genes_pt.tcga) == refined_data_unique$sampleID)
 
-# 2. Log2 Transform (This brings 0-100,000 down to a 0-16 range, like Microarray)
-# We add 1 to avoid log(0)
-tcga_log <- log2(tcga_transposed + 1)
+# 5.5 Add a column of EVENT as a binary term for it to be the outcome
 
-# 3. Scale (Only if your original 'final_fit' recipe used scaling/normalization)
-late_genes.patients_tcga <- tcga_log %>% as.data.frame()
-
-
-late_genes.patients_tcga <- late_genes.patients_tcga %>%
-  as.data.frame() %>% 
-  dplyr::select(where(~ !all(is.na(.))))
-
-
-
-
-
-# 4.4 Check that the patients are in the same order
-
-refined_data <- refined_data[refined_data$sampleID %in% rownames(late_genes.patients_tcga),]
-
-
-all(rownames(late_genes.patients_tcga) == refined_data$sampleID)
-
-# 4.5 Add a column of EVENT as a binary term for it to be the outcome
-
-late_genes.patients_tcga <- 
-  late_genes.patients_tcga %>% 
+proof_genes_pt.tcga <- 
+  proof_genes_pt.tcga %>% 
   rownames_to_column("sampleID") %>% 
-  left_join(refined_data, by = "sampleID") %>% 
+  left_join(refined_data_unique, by = "sampleID") %>%  # Join counts with metadata
   column_to_rownames("sampleID") %>% 
-  dplyr::select(all_of(late_death.genes), 
-         event,
-         event_mon) %>% 
-  as.data.frame() %>% 
-  mutate(EVENT = event, 
-         EVENT = as.numeric(event ),
-         EVENT_MON = event_mon,
-         EVENT_MON = as.numeric(event_mon)
+  dplyr::select(all_of(proof_genes),  # Keep all the genes to ve evaluated and the oucome variables
+         RECURRENCE_MON, # SURVIVAL_MON for survival and RECURRENCE_MON for recurrence
+         RECURRENCE) %>% # SURVIVAL for survival and RECURRENCE for recurrence
+  dplyr::rename(EVENT_STAT = RECURRENCE, # Rename to common term (EVENT_STAT for event and EVENT_MON for time of follow up)
+         EVENT_MON = RECURRENCE_MON) %>% 
+  mutate(EVENT_STAT = as.numeric(EVENT_STAT),
+         EVENT_MON = as.numeric(EVENT_MON)
          ) %>%  
-  mutate(surv_obj =  Surv(
+  as.data.frame() %>% 
+  mutate(surv_obj =  Surv( # Create survival object
     time  = EVENT_MON,
-    event = EVENT,
+    event = EVENT_STAT,
     type  = "right"
   )) %>% 
-  dplyr::select(- event,
-                - event_mon)
-late_genes.patients_tcga <- late_genes.patients_tcga %>% 
-  filter(EVENT_MON > 0)
+  filter(
+    EVENT_MON > 0
+  )
 
 
+outcome_analyzed <- "RECURRENCE" # To print at the end so as to ot get confused to what is being analyzed
 
-###############################################################################
-###############################################################################
-###############################################################################
-###############################################################################
 # ==========================================================================
-# 8. EXTERNAL VALIDATION ON TCGA
+# 6. EXTERNAL VALIDATION ON TCGA
 # ==========================================================================
 
+# 6.1 Extract the trained recipe from the workflow
 
-# This is the "testing" phase
-tcga_results <- predict(final_fit, new_data = late_genes.patients_tcga, type = "linear_pred") %>%
-  bind_cols(late_genes.patients_tcga)
+trained_rec <- extract_recipe(final_fit)
+
+# 6.2 "Bake" the RNA-seq data and by that we mean to apply the same steps of the recipe to the new data
+
+final_df_baked <- bake(trained_rec, new_data = proof_genes_pt.tcga)
+
+# 6.3 Predict with the parameters from the fit to the TCGA data
+
+tcga_results <- predict(final_fit, new_data = final_df_baked, type = "linear_pred") %>%
+  bind_cols(final_df_baked)
 
 
-# This is where you get your "P-value" for the test
+# 6.4 Obtaining the p value of the test
+
 validation_test <- coxph(surv_obj ~ .pred_linear_pred, data = tcga_results)
 
 summary(validation_test)
@@ -308,68 +315,88 @@ summary(validation_test)
 
 library(survminer)
 
-# Create risk groups based on the median of your predictions
-
-
+# 6.5 Create risk groups based on the median of the predictions
 
 tcga_results <- tcga_results %>%
   mutate(risk_group = as.factor(ifelse(.pred_linear_pred < median(.pred_linear_pred), "High Risk", "Low Risk")))
 
+# 6.5.2 Relevel so as to have low risk as reference
+
 tcga_results$risk_group <- relevel(tcga_results$risk_group, ref = "Low Risk")
 
-# Fit the KM curve
-km_fit <- survfit(Surv(EVENT_MON, EVENT) ~ risk_group, data = tcga_results)
+# 6.6 Fit the KM curve
 
-# Plot
+km_fit <- survfit(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = tcga_results)
+
+# 6.6.2 Plot
+
 ggsurvplot(km_fit, 
            data = tcga_results, 
            pval = TRUE, 
            risk.table = TRUE,
-           title = "Validation in tcga (Untreated Cohort)",
-           palette = c("#E41A1C", "#377EB8"))
+           
+           title = "Validation in TCGA",
+           font.title = 30,
+           legend = "bottom",
+           font.legend = 22,
+           legend.title = "Risk group",
+           font.legend.title = 20,
+           legend.labs = c("Low risk", "High risk"),
+           font.legend.labs = 18,
+           xlab = "Time (months)",
+           
+           xlim = c(0, 300),         # Zoom in
+           break.time.by = 50,      # X axis breaks
+           ggtheme = theme_minimal(), # ggplot2 theme
+           
+           linewidth = 3,                 # Line size
+           palette = c("#E7B800", "#2E9FDF"), # Custom color palette
+
+           )
 
 
-tcga_results <- tcga_results %>%
-  mutate(pred_z = scale(.pred_linear_pred))
 
-# Run Cox again
-summary_cox_tcga <- summary(coxph(Surv(EVENT_MON, EVENT) ~ risk_group, data = tcga_results))
+# 6.7 Run Cox again
 
-# Calculate the actual Concordance Index
-c_index_results.tcga <- concordance(Surv(EVENT_MON, EVENT) ~ .pred_linear_pred, 
-                               data = gse96058_results)
+summary_cox_tcga <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = tcga_results))
+
+# 6.8 Calculate the actual Concordance Index
+
+c_index_results.tcga <- concordance(Surv(EVENT_MON, EVENT_STAT) ~ .pred_linear_pred, 
+                               data = tcga_results)
 
 
 
 library(timeROC)
 
-# Assuming tcga_results has: 
-# EVENT_MON (time), EVENT (event), and pred_z (your score)
+# 6.9 Area under the curve at 3 time points
 
 res_auc <- timeROC(T = tcga_results$EVENT_MON,
-                   delta = tcga_results$EVENT,
-                   marker = -tcga_results$pred_z,
-                   cause = 1, # The event code
+                   delta = tcga_results$EVENT_STAT,
+                   marker = -tcga_results$.pred_linear_pred,
+                   cause = 1, # The EVENT code
                    times = c(36, 60, 120), # 3, 5, and 10 years
                    iid = TRUE)
 
-# View the AUC values
+# 6.9.2 View the AUC values
+
 res_auc_tcga <- res_auc$AUC %>% 
   as.data.frame()
 
-# Cox multivariado con clinica
-late_genes.patients_tcga.cox <-
-  late_genes.patients_tcga %>%
+# 7 Multivariate cox
+
+proof_genes_pt.tcga.cox <-
+  proof_genes_pt.tcga %>%
   rownames_to_column("sampleID") %>%
-  left_join(refined_data, by = "sampleID") %>%
+  left_join(refined_data_unique, by = "sampleID") %>%
   as.data.frame() %>%
   column_to_rownames("sampleID") %>%
   mutate(
-    HER2 = HER2_Final_Status_nature2012,
+    HER2 = lab_proc_her2_neu_immunohistochemistry_receptor_status,
     LYMPH = as.numeric(lymph_node_examined_count),
     PAM50 = PAM50Call_RNAseq,
     AGE = as.numeric(Age_at_Initial_Pathologic_Diagnosis_nature2012),
-    SCORE = tcga_results$.pred_linear_pred
+    SCORE = tcga_results$.pred_linear_pred 
   ) %>%
   dplyr::select(all_of(late_death.genes),
                 surv_obj,
@@ -380,83 +407,22 @@ late_genes.patients_tcga.cox <-
                 SCORE) %>%
   na.omit()
 
-independent_prog.tcga <- coxph(surv_obj ~ SCORE + AGE + LYMPH, data = late_genes.patients_tcga.cox) %>% 
+independent_prog.tcga <- coxph(surv_obj ~ SCORE + AGE + LYMPH, data = proof_genes_pt.tcga.cox) %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE)
 
+print(outcome_analyzed)
 
-#################################################################################
-#################################################################################
-#################################################################################
-#################################################################################
-#################################################################################
-#################################################################################
-#################################################################################
-#################################################################################
 
-text_validation.tcga <- paste("Esta firma en TCGA consiguio un HR de ",
-      round(summary_cox_tcga$coefficients[2], 3),
-      " (IC 95% de ",
-      round(summary_cox_tcga$conf.int[3], 3),
-      " - ",
-      round(summary_cox_tcga$conf.int[4], 3),
-      ", pval de ",
-      summary_cox_tcga$coefficients[5],
-      ", C score de ",
-      round(c_index_results.tcga$concordance, 2),
-      ", área bajo la curva a los 3 años de ",
-      round(res_auc_tcga[1,1], 3),
-      ", a los 5 años de ",
-      round(res_auc_tcga[2,1], 3),
-      ", y a los 10 años de",
-      round(res_auc_tcga[3,1], 3)
+num_param_compare <- c(2:3)
+
+cat(paste0("The signature on TCGA got a C-score of ", round(c_index_results.tcga$concordance, 2)),
+    paste0("an HR of ", round(summary_cox_tcga$coefficients[2], 2), " (CI 95% of ", round(summary_cox_tcga$conf.int[3], 2), " - ", round(summary_cox_tcga$conf.int[4], 2), " pval ", summary_cox_tcga$coefficients[5], ")"),
+    paste0("AUC at 3 years of ", round(res_auc_tcga[1,], 2), " at 5 years of ", round(res_auc_tcga[2,], 2), " and at 10 years of ", round(res_auc_tcga[3,], 2)),
+    paste0("As an independence factor it has an HR of ", round(independent_prog.tcga$estimate[independent_prog.tcga$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog.tcga$conf.low[independent_prog.tcga$term == "SCORE"], 2), " - ", round(independent_prog.tcga$conf.high[independent_prog.tcga$term == "SCORE"], 2), " pval of ", independent_prog.tcga$p.value[independent_prog.tcga$term == "SCORE"], ")"),
+    sep = ". "
 )
 
-cat(text_signature,
-    text_validation.gse96058,
-    text_validation.tcga,
-    sep = ". ")
-
-
-
-
-
-lymph_rows.tcga <- independent_prog.tcga[grepl("LYMPH", independent_prog.tcga$term),]
-
-best_lymph.tcga <- lymph_rows.tcga[which.min(lymph_rows.tcga$p.value),]
-
-significance.tcga <- if((independent_prog.tcga[independent_prog.tcga$term == "SCORE",]$p.value < 0.05) == TRUE){
-  "se mantuvo como un predictor de la supervivencia independiente significativo "
-}else{
-  "no se mantuvo como un predictor de la supervivencia independiente significativo " 
-}
-
-text_independent_prog.tcga <- paste0(
-  "Con esta base de datos, al realizar un cox multivariado junto a edad y ganglios linfaticos, la firma ",
-  significance.tcga,
-  "obteniendo un HR de ",
-  round(independent_prog.tcga$estimate[independent_prog.tcga$term == "SCORE"], 3),
-  " (IC 95% de ",
-  round(independent_prog.tcga$conf.low[independent_prog.tcga$term == "SCORE"], 2),
-  " - ",
-  round(independent_prog.tcga$conf.high[independent_prog.tcga$term == "SCORE"], 2),
-  " pvalue de ",
-  independent_prog.tcga$p.value[independent_prog.tcga$term == "SCORE"],
-  ")",
-  if((independent_prog.tcga[independent_prog.tcga$term == "SCORE",]$p.value < best_lymph.tcga$p.value) == TRUE){
-    paste0(" superando a los ganglios linfaticos como predictor (HR de ",
-           round(best_lymph.tcga$estimate, 3),
-           " pval de ",
-           best_lymph.tcga$p.value,
-           ")")
-  }else{
-    paste0(" sin lograr superar a los ganglios linfaticos como predictor (HR de ",
-           round(best_lymph.tcga$estimate, 3),
-           " pval de ",
-           best_lymph.tcga$p.value,
-           ")")
-  }
+cat(paste0(independent_prog.tcga$term[num_param_compare], " with its HR of ", round(independent_prog.tcga$estimate[num_param_compare], 2), " (CI 95% of ", round(independent_prog.tcga$conf.low[num_param_compare], 2), " - ", round(independent_prog.tcga$conf.high[num_param_compare], 2), " pval of ", independent_prog.tcga$p.value[num_param_compare], ")"),
+    sep = ". "
 )
-
-text_tcga <- paste(text_validation.tcga, text_independent_prog.tcga, sep = ". ")
-
-cat(text_metabric, text_gse96058, text_tcga, sep = "\n")
+independent_prog.tcga[num_param_compare, c(1, 2, 5, 6, 7)]
