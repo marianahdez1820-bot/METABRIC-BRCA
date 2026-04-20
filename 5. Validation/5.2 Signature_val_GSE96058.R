@@ -141,12 +141,27 @@ counts_data.gse96058_erpos <- t(counts_data.gse96058_erpos)
 
 
 
-# Find genes present in both data sets
+# 3.2 Find genes present in both data sets
+
+colnames(counts_data.gse96058_erpos) <- make.names(colnames(counts_data.gse96058_erpos))
+
 common_genes_meta.gse96058 <- intersect(proof_genes, colnames(counts_data.gse96058_erpos))
 
 
-# Check how many are lost
-print(paste("Original:", length(proof_genes), "Common:", length(common_genes_meta.gse96058)))
+# 4.2 Object with all the patients and expression of only the genes of interest
+
+counts_data.gse96058_erpos <- counts_data.gse96058_erpos[, colnames(counts_data.gse96058_erpos) %in% common_genes_meta.gse96058]
+
+# 4.3 Stop running if there are less genes in TCGA than on the signature
+
+if(length(common_genes_meta.gse96058) < length(proof_genes)){
+  stop(paste("There are missing genes in TCGA relative to the signature, missing ", length(proof_genes) - length(common_genes_meta.gse96058), " gene(s): "),  paste0(proof_genes[!(proof_genes %in% common_genes_meta.gse96058)], sep = ", ")) # Script stops here
+}else{
+  print("All genes in the signature are on TCGA")
+}
+
+
+
 
 counts_data.gse96058_erpos <- counts_data.gse96058_erpos[ , common_genes_meta.gse96058]
 
@@ -261,7 +276,8 @@ proof_genes_pt_gse96058.cox <-
          PAM50 = pam50,
          AGE = as.numeric(age),
          KI67 = ki67_pred_sgc,
-         SCORE = gse96058_results$.pred_linear_pred
+         SCORE = gse96058_results$.pred_linear_pred,
+         RISK = gse96058_results$risk_group
   ) %>% 
   dplyr::select(all_of(proof_genes),
                 surv_obj,
@@ -270,10 +286,12 @@ proof_genes_pt_gse96058.cox <-
                 AGE,
                 HER2,
                 KI67,
-                SCORE
+                SCORE,
+                RISK
   ) %>% 
   na.omit()
 
 independent_prog.gse96058 <- coxph(surv_obj ~ PAM50 + KI67 + HER2 + AGE + LYMPH + SCORE, 
                                    data = proof_genes_pt_gse96058.cox) %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE)
+
