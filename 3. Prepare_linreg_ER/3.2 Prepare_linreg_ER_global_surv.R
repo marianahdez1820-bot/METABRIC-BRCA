@@ -15,7 +15,7 @@ ml_metadata <- er_patients_surv
 
 # 1.2 List of genes to use (check dictionary below to understand the different variables that are used)
 
-proof_genes <- boruta_signature # common_genes_meta.gse96058 #common_genes_meta.tcga  
+proof_genes <- make.names(boruta_signature) # common_genes_meta.gse96058 #common_genes_meta.tcga  
 # confirmed_only # boruta_signature #significant_genes$term #rownames(res_sig) 
 
 # 1.3 Object with ER+ patients and expression of only the genes of interest
