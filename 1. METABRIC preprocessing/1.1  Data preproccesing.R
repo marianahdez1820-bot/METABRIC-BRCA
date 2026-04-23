@@ -2,18 +2,17 @@ library(tidyverse)
 
 # 1.- Data loading --------------------------------------------------
 
-microarray_data <- read.table("D:/brca_metabric/brca_metabric/data_mrna_illumina_microarray.txt",
+microarray_data <- read.table("data_mrna_illumina_microarray.txt",
                               header = TRUE)
 
-# 1.1.2 Metadata loading
+# 1.1.2 Metadata
 
 clinical_data <- read.delim(
-  "D:/brca_metabric/brca_metabric/data_clinical_patient.txt",
+  "data_clinical_patient.txt",
   comment.char = "#",
-  stringsAsFactors = FALSE
-)
+  stringsAsFactors = FALSE)
 
-# 1.1.3 Check if rownames in clinical data have the same nomenclature as the colname in microarray_data, if they differ by a point or dash (MB.0000 vs MB-0000) use
+# 1.1.3 Check if rownames in clinical data have the same nomenclature as the colname sin microarray_data, if they differ by a point or dash (MB.0000 vs MB-0000) use
 clinical_data$PATIENT_ID <- gsub("-", ".", clinical_data$PATIENT_ID)
 
 # 1.1.4 Object without ENTREZ and HUGO columns
@@ -66,24 +65,66 @@ counts_data$variance <- NULL
 
 metadata <- clinical_data[clinical_data$PATIENT_ID %in% colnames(microarray_data.num),]
 
+
 metadata  <-   metadata %>% 
-  mutate(ER_POS = ifelse(ER_IHC == "Positve",
-                1,
-                0),
+  mutate(ER_POS = ifelse(ER_IHC == "Positve", # Create ER+ column with 0 and 1 depending on status
+                         1,
+                         0),  
          SURVIVAL_STAT = as.numeric(gsub(":.*", "", metadata$OS_STATUS)), # 2.2 Add column of survival state where 1 is dead and 0 is alive
-         RECURR_STAT = as.numeric(gsub(":.*", "", metadata$RFS_STATUS))
+         RECURR_STAT = as.numeric(gsub(":.*", "", metadata$RFS_STATUS))) %>% 
+  mutate(HER2_POS = ifelse(THREEGENE == "HER2+",
+                                    1,
+                                    0),
+         HER2_POS = as.numeric(HER2_POS)
          )
-metadata
 
 
 
-# 2.3 Metadata of only the patients that are dead because of breast cancer
-
-metadata_diseased.brca <- metadata[metadata$SURVIVAL_STAT > 0 & metadata$VITAL_STATUS == "Died of Disease",]
-
-
-
-# 1.1 Object with live patients and patients diseased by breast cancer
+# 2.4 Object of patients that are alive or  diseased by breast cancer
 
 alive_brca.death <- metadata %>% 
-  filter(VITAL_STATUS != "Died of Other Causes")
+  filter(VITAL_STATUS != "Died of Other Causes") # Relevant for recurrence
+
+
+
+# 2.5 Complete metadata only for ER+ patients
+metadata.ER_POS <- metadata %>% 
+  as.data.frame() %>% 
+  filter(
+    ER_IHC == "Positve")  # Keep only ER+ patients
+
+
+# 2.5.1 Complete metadata only for ER+ useful for recurrence
+metadata.ER_POS_REC <- metadata.ER_POS %>% 
+  as.data.frame() %>% 
+  mutate(EVENT_STAT = as.numeric(RECURR_STAT),
+         EVENT_MON = as.numeric(RFS_MONTHS)) %>% 
+  drop_na()
+
+# 2.5.2 Complete metadata only for ER+ patients who DIED OF BRCA or are alive (useful for survival)
+
+metadata.ER_POS_SURV <- metadata.ER_POS %>% 
+  as.data.frame() %>% 
+  filter(VITAL_STATUS != "Died of Disease" & SURVIVAL_STAT == 0) %>% # Only remove the ones who died of other causes
+  mutate(EVENT_STAT = as.numeric(SURVIVAL_STAT),
+         EVENT_MON = as.numeric(OS_MONTHS)) %>% 
+  drop_na()
+
+
+# 2.5.3 Object with ER+ patients complete metadata that received HORMONAL THERAPY ONLY for patients who DIED of BRCA or are alive
+
+metadata_hormone_SURV <- metadata.ER_POS_SURV %>%  
+  as.data.frame() %>% 
+  mutate(HORMONE_THERAPY_STAT= ifelse(HORMONE_THERAPY == "YES", yes = 1, no = 0),
+         HORMONE_THERAPY_STAT = as.numeric(HORMONE_THERAPY_STAT)) %>% 
+  filter(HORMONE_THERAPY_STAT== 1) 
+
+
+# 2.5.4 Object with ER+ patients complete metadata that received hormonal therapy 
+
+metadata_hormone_REC <- metadata.ER_POS_REC %>% 
+  as.data.frame() %>% 
+  mutate(HORMONE_THERAPY_STAT= ifelse(HORMONE_THERAPY == "YES", yes = 1, no = 0),
+         HORMONE_THERAPY_STAT = as.numeric(HORMONE_THERAPY_STAT)) %>% 
+  filter(HORMONE_THERAPY_STAT== 1) 
+        
