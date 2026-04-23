@@ -8,9 +8,7 @@ label <- "For predicting recurrence in ER+ patients from METABRIC cohort"
 
 # 1.- Preparing metadata --------------------------------------------------
 
-er_patients_recu <- metadata %>% 
-  filter(ER_IHC == "Positve")
-
+er_patients_recu <- metadata.ER_POS_REC  # metadata.ER_POS_SURV
 ml_metadata <- er_patients_recu
 
 # 1.2 List of genes to use (check dictionary below to understand the different variables that are used)
