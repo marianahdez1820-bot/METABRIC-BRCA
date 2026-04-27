@@ -2,8 +2,9 @@ library(tidymodels)
 library(readr)       # for importing data
 library(vip)
 library(censored)
+library(survminer)
 
-# Initial object late_genes.patients created in preprocessing
+# Initiasurvival# Initial object late_genes.patients created in preprocessing
 # Its made so that the modifications have to be done on preprocessing so even if the
 # thing to be studied is recurrence the object will stay as EVENT and EVENT_MON
 
@@ -41,8 +42,8 @@ lr_rec <- recipe(surv_obj ~ ., data = train_data) %>% # Survival object created 
   step_zv(all_predictors()) %>% # Eliminates variables with a single value
   step_nzv(all_predictors()) %>% # Eliminates highly sparse variables
   step_impute_mean(all_predictors()) %>% # Imputes NAs to mean of those variables
-  step_normalize(all_predictors())  # Normalize all
-
+  step_normalize(all_predictors())  %>% # Normalize all
+  step_spatialsign()
 
 
 # 2.2 Model
@@ -75,7 +76,7 @@ folds <- vfold_cv(
 # 3.2 Grid for penalizing range
 
 grid <- grid_regular(
-  penalty(range = c(-4, 1)),   
+  penalty(range = c( - 4, 1)),   
   mixture(range = c(0, 1)),
   levels = 10
 )
@@ -141,6 +142,13 @@ test_data$risk_group <- as.factor(ifelse(
   "High",
   "Low"
 ))
+
+surv_cutpoint(
+  data = test_data, 
+  time = "EVENT_MON", 
+  event = "EVENT_STAT", 
+  variables = "risk_score"
+)
 
 test_data$risk_group <- relevel(test_data$risk_group, ref = "Low")
 
@@ -217,7 +225,7 @@ time_roc <- timeROC(
   delta = test_data$EVENT_STAT,
   marker = -test_pred$.pred_linear_pred,
   cause = 1,
-  times = c(36, 60, 72, 120),  # 3y, 5y, 6y, 10y
+  times = c(12, 36, 60, 72, 120),  # 1y, 3y, 5y, 6y, 10y
   iid = TRUE
 )
 
@@ -225,20 +233,26 @@ auc <- time_roc$AUC %>%
   as.data.frame()
 
 
+# 8.- Independence test ---------------------------------------------------
+
+# 8.1 Keep only the patients of the test data
+
 proof_genes_pt.cox <- proof_genes_pt[rownames(test_data),]
+
+# 8.2 Create object with parameters to evaluate on the cox model
 
 proof_genes_pt.cox <- 
   proof_genes_pt.cox %>% 
   as.data.frame() %>% 
   rownames_to_column("PATIENT_ID") %>% 
-  left_join(ml_metadata, by = "PATIENT_ID", suffix = c("", ".y")) %>%
+  left_join(ml_metadata, by = "PATIENT_ID", suffix = c("", ".y")) %>% # Join with metadata and eliminate duplicates
   dplyr::select(-ends_with(".y")) %>% 
   column_to_rownames("PATIENT_ID") %>% 
-  mutate(HER2 = HER2_SNP6, 
+  mutate(HER2 = HER2_SNP6, # Create objects for evaluation
          LYMPH = LYMPH_NODES_EXAMINED_POSITIVE,
          AGE = as.numeric(AGE_AT_DIAGNOSIS ),
          MENO = INFERRED_MENOPAUSAL_STATE    ,
-         SCORE = test_pred$.pred_linear_pred,
+         SCORE = test_pred$.pred_linear_pred, # This one is the score of the model
          HORMONE = HORMONE_THERAPY ,
          CHEMO = CHEMOTHERAPY,
          SURGERY = BREAST_SURGERY,
@@ -255,19 +269,31 @@ proof_genes_pt.cox <-
                 CHEMO,
                 SURGERY,
                 PAM50,
-                INTCLUST) %>%  
+                INTCLUST, 
+                EVENT_STAT,
+                EVENT_MON) %>%  
   na.omit()
 
-independent_prog <- coxph(surv_obj ~ HORMONE + CHEMO + SURGERY + MENO + HER2 + AGE + LYMPH + SCORE +  PAM50 + INTCLUST, 
-                          data = proof_genes_pt.cox) %>% 
+# 8.3 Multivariate cox comparing the variables including the score to test its independent value
+
+cox_model <- coxph(surv_obj ~ HORMONE + CHEMO + SURGERY + MENO + HER2 + AGE + LYMPH + SCORE +  PAM50 + INTCLUST, 
+                   data = proof_genes_pt.cox)
+
+summary(cox_model)
+
+# 8.3.2 Tidy format
+
+independent_prog <- cox_model %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE)
 
 
+# 9.- Results -------------------------------------------------------------
 
-
-print(independent_prog, n = 21)
+# 9.1 Index number of the parameters to print the evaluation and to graph
 
 num_param_compare <- c(9:21)
+
+# 9.2 Concatenate strings with the respective result
 
 cat(paste0("Signature with ", length(coef_tbl$term), " genes (", paste(coef_tbl$term, collapse = ", "), ")"),
     paste0("The selected parameters were an alpha of ", best_params$mixture, " and a lambda of ", best_params$penalty),
@@ -281,12 +307,11 @@ cat(paste0("Signature with ", length(coef_tbl$term), " genes (", paste(coef_tbl$
 cat(paste0(independent_prog$term[num_param_compare], " with its HR of ", round(independent_prog$estimate[num_param_compare], 2), " (CI 95% of ", round(independent_prog$conf.low[num_param_compare], 2), " - ", round(independent_prog$conf.high[num_param_compare], 2), " pval of ", independent_prog$p.value[num_param_compare], ")"),
     sep = ". "
     )
-independent_prog[num_param_compare, c(1, 2, 5, 6, 7)]
 
-
+# 9.3 Forest plot of the evaluated parameters
 
 independent_prog %>%
-  filter(estimate > 0.0001,
+  filter(estimate > 0.0001, # Since there are values that tend to infinite we filter them ouit
          conf.high < 100) %>%
   mutate(
     term = reorder(term, estimate),
@@ -294,7 +319,8 @@ independent_prog %>%
   ) %>%
   ggplot(aes(x = estimate, y = term, color = significant)) +
   geom_point() +
-  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0.5, linewidth = 1.2) +
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
   theme_minimal()
+
