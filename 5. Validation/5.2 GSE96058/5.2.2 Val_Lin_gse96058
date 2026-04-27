@@ -1,0 +1,188 @@
+
+# This file is to validate the signature obtained by lin regression on GSE96058 
+
+# 1.- Validation Lin Reg ----------------------------------------------------------
+
+# 1.1 Extract the trained recipe from the workflow
+
+trained_rec <- extract_recipe(final_fit)
+
+# 1.2 "Bake" the RNA-seq data and by that we mean to apply the same steps of the recipe to the new data
+
+proof_genes_pt.gse96058_baked <- bake(trained_rec, new_data = proof_genes_pt.gse96058)
+
+# 1.3 Predict
+
+gse96058_results <- predict(final_fit, new_data = proof_genes_pt.gse96058_baked, type = "linear_pred") %>%
+  bind_cols(proof_genes_pt.gse96058_baked)
+
+# 1.4 To get the p value
+
+validation_test <- coxph(Surv(EVENT_MON, EVENT_STAT) ~ .pred_linear_pred, data = gse96058_results)
+
+summary(validation_test)
+
+
+
+# 2.- Risk stratification -------------------------------------------------
+
+
+library(survminer)
+
+# 2.1 Create risk groups based on the median of the predictions
+
+gse96058_results <- gse96058_results %>%
+  mutate(risk_group = as.factor(ifelse(.pred_linear_pred < median(.pred_linear_pred), "High Risk", "Low Risk")))
+
+
+# 2.2 Fit the KM curve
+
+km_fit <- survfit(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = gse96058_results)
+
+# 2.3 Plot
+
+
+ggsurvplot(km_fit, 
+           data = gse96058_results, 
+           pval = TRUE, 
+           risk.table = TRUE,
+           
+           title = "Validation in GSE96058",
+           font.title = 30,
+           legend = "bottom",
+           font.legend = 22,
+           legend.title = "Risk group",
+           font.legend.title = 20,
+           legend.labs = c("Low risk", "High risk"),
+           font.legend.labs = 18,
+           xlab = "Time (months)",
+           
+           ylim = c(0.7, 1),
+           xlim = c(0, 85),         # Zoom in
+           break.time.by = 10,      # X axis breaks
+           ggtheme = theme_minimal(), # ggplot2 theme
+           
+           linewidth = 3,                 # Line size
+           palette = c("#E41A1C", "#377EB8"), # Custom color palette
+           
+)
+
+
+
+
+gse96058_results <- gse96058_results %>%
+  mutate(pred_z = scale(.pred_linear_pred))
+
+
+# 2.4 Run Cox again
+
+gse96058_results$risk_group <- relevel(gse96058_results$risk_group, ref = "Low Risk")
+
+summary_gse96058 <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = gse96058_results))
+
+# 2.5 Calculate the actual Concordance Index
+
+c_index_results.gse96058 <- concordance(Surv(EVENT_MON, EVENT_STAT) ~ .pred_linear_pred, 
+                                        data = gse96058_results)
+
+
+
+library(timeROC)
+
+# 2.6 Area under the curve per time
+
+res_auc <- timeROC(T = gse96058_results$EVENT_MON,
+                   delta = gse96058_results$EVENT_STAT,
+                   marker = -gse96058_results$pred_z,
+                   cause = 1, # The event code
+                   times = c(36, 60, 72, 80), # 3, 5, and 6 years
+                   iid = TRUE)
+
+# 2.7 View the AUC values
+
+res_auc_gse96058 <- res_auc$AUC %>% 
+  as.data.frame()
+
+
+# 3.- Independence test ---------------------------------------------------
+
+# 3.1 Prepare data for multivariate cox
+
+proof_genes_pt_gse96058.cox <- 
+  proof_genes_pt.gse96058 %>% 
+  as.data.frame() %>% 
+  rownames_to_column("title") %>% 
+  left_join(metadata.gse96058_er_pos, by = "title", suffix = c("", ".y")) %>% # Join with metadata
+  dplyr::select(-ends_with(".y")) %>% 
+  column_to_rownames("title") %>% 
+  mutate(HER2 = her2_pred_sgc, 
+         LYMPH = lymph_group,
+         PAM50 = pam50,
+         AGE = as.numeric(age),
+         KI67 = ki67_pred_sgc,
+         SCORE = gse96058_results$.pred_linear_pred,
+         RISK = gse96058_results$risk_group
+  ) %>% 
+  dplyr::select(all_of(proof_genes),
+                surv_obj,
+                LYMPH,
+                PAM50,
+                AGE,
+                HER2,
+                KI67,
+                SCORE,
+                RISK
+  ) %>% 
+  na.omit()
+
+# 3.2 Multivariate cox
+
+cox_model.gse96058 <- coxph(surv_obj ~ PAM50 + KI67 + HER2 + AGE + LYMPH + SCORE, 
+                            data = proof_genes_pt_gse96058.cox)
+
+independent_prog.gse96058 <- cox_model.gse96058 %>% 
+  tidy(exponentiate = TRUE, conf.int = TRUE)
+
+summary(cox_model.gse96058)
+
+
+# 4.- Results -------------------------------------------------------------
+
+# 4.1 Index numbers to use of the multivariate cox
+
+num_param_compare <- c(1:11)
+
+# 4.2 Concatenate text with desired results
+
+cat(paste0("The signature on GSE96058 got a C-score of ", round(c_index_results.gse96058$concordance, 2)),
+    paste0("an HR of ", round(summary_gse96058$coefficients[2], 2), " (CI 95% of ", round(summary_gse96058$conf.int[3], 2), " - ", round(summary_gse96058$conf.int[4], 2), " pval ", summary_gse96058$coefficients[5], ")"),
+    paste0("AUC at 3 years of ", round(res_auc_gse96058[1,], 2), " at 5 years of ", round(res_auc_gse96058[2,], 2), " and at 6 years of ", round(res_auc_gse96058[3,], 2)),
+    paste0("As an independence factor it has an HR of ", round(independent_prog.gse96058$estimate[independent_prog.gse96058$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog.gse96058$conf.low[independent_prog.gse96058$term == "SCORE"], 2), " - ", round(independent_prog.gse96058$conf.high[independent_prog.gse96058$term == "SCORE"], 2), " pval of ", independent_prog.gse96058$p.value[independent_prog.gse96058$term == "SCORE"], ")"),
+    sep = ". "
+)
+
+cat(paste0(independent_prog.gse96058$term[num_param_compare], " with its HR of ", round(independent_prog.gse96058$estimate[num_param_compare], 2), " (CI 95% of ", round(independent_prog.gse96058$conf.low[num_param_compare], 2), " - ", round(independent_prog.gse96058$conf.high[num_param_compare], 2), " pval of ", independent_prog.gse96058$p.value[num_param_compare], ")"),
+    sep = ". "
+)
+
+# 4.3 Forest Plot
+
+independent_prog.gse96058 %>%
+  filter(estimate > 0.0001,
+         conf.high < 100) %>%
+  mutate(
+    term = reorder(term, estimate),
+    significant = p.value < 0.05
+  ) %>%
+  ggplot(aes(x = estimate, y = term, color = significant)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
+  geom_vline(xintercept = 1, linetype = "dashed") +
+  scale_x_log10() +
+  theme_minimal()
+
+# 4.4 Boxplot comparing to PAM50
+
+boxplot(SCORE ~ PAM50, data = proof_genes_pt_gse96058.cox)
+
+
