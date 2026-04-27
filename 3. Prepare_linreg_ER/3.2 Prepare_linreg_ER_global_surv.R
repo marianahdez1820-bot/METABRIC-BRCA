@@ -37,10 +37,7 @@ proof_genes_pt <-
   as.data.frame() %>% 
   rownames_to_column("PATIENT_ID") %>% 
   left_join(er_patients_surv, by = "PATIENT_ID") %>% 
-  column_to_rownames("PATIENT_ID") %>% 
-  mutate(EVENT_STAT = as.numeric(SURVIVAL_STAT),
-         EVENT_MON = as.numeric(OS_MONTHS)
-  ) %>%  # Turn to factor for machine learning
+  column_to_rownames("PATIENT_ID") %>%  # Turn to factor for machine learning
   dplyr::select(all_of(proof_genes),
                 EVENT_MON,
                 EVENT_STAT) %>% 
@@ -59,3 +56,4 @@ proof_genes_pt <-
 #>  
 #> rownames(res_sig) <- List of genes from differential expression
 #> significant_genes$term <- Contains the genes determined by the cox analysis as significant so as to be used as signature input in ML models
+
