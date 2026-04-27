@@ -93,8 +93,7 @@ alive_brca.death <- metadata %>%
 
 metadata.ER_POS <- metadata %>% 
   as.data.frame() %>% 
-  filter(
-    ER_IHC == "Positve")  # Keep only ER+ patients
+  filter(ER_IHC == "Positve")  # Keep only ER+ patients
 
 
 # 2.5.1 Complete metadata only for ER+ useful for recurrence
@@ -108,7 +107,7 @@ metadata.ER_POS_REC <- metadata.ER_POS %>%
 
 metadata.ER_POS_SURV <- metadata.ER_POS %>% 
   as.data.frame() %>% 
-  filter(VITAL_STATUS != "Died of Disease" | SURVIVAL_STAT == 0) %>% # Only remove the ones who died of other causes
+  filter(VITAL_STATUS != "Died of Other Causes") %>% # Only remove the ones who died of other causes
   mutate(EVENT_STAT = as.numeric(SURVIVAL_STAT),
          EVENT_MON = as.numeric(OS_MONTHS)) 
 
