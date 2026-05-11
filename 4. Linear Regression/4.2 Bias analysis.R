@@ -64,31 +64,53 @@ model_diagnostics <- augment(
   eval_time = c(36, 60, 120) # Times in months (3, 5, 10 years)
 )
 
-
+eval_time <- 120
 
 # 3.3 Unnest the predictions and find the biggest outliers on a set point and event
 
 outliers <- model_diagnostics %>%
   dplyr::select(PATIENT_ID, EVENT_MON, EVENT_STAT, .pred) %>%
   unnest(.pred) %>%
-  filter(.eval_time == 120) %>%
-  filter(EVENT_STAT == 1) %>% 
+  filter(.eval_time == eval_time) %>% 
   arrange(desc(.pred_survival)) # Siunce our signature as it goes up, the predicted mortality goes down we see which patients died early who were predicted to die late or survive
 
 print(outliers)
 
 # 3.4 Observe the claudin type of the outliers
 
-for (i in 1:20) {
-  
-  print(paste0(metadata.ER_POS_SURV$RFS_MONTHS[metadata.ER_POS_SURV$PATIENT_ID == as.character(outliers[i, 1])], " ", metadata.ER_POS_SURV$CLAUDIN_SUBTYPE[metadata.ER_POS_SURV$PATIENT_ID == as.character(outliers[i, 1])], " ", outliers$PATIENT_ID[i]))
+outlier_summary <- outliers %>%
+  head(20) %>%
+  inner_join(metadata.ER_POS_SURV, by = "PATIENT_ID") %>%
+  dplyr::select(
+    PATIENT_ID, 
+    .pred_survival, 
+    EVENT_STAT.x, 
+    EVENT_MON.x, 
+    CLAUDIN_SUBTYPE, 
+    LYMPH_NODES_EXAMINED_POSITIVE, 
+    THREEGENE,
+    INTCLUST,
+    NPI
+  ) %>% 
+  rename(EVENT_STAT = EVENT_STAT.x, 
+         EVENT_MON = EVENT_MON.x)
 
-  }
+print(outlier_summary)
+
+outlier_summary %>%
+  group_by(INTCLUST) %>%
+  summarise(
+    count = n(),
+    avg_pred_survival = mean(.pred_survival),
+    avg_event_time = mean(EVENT_MON)
+  ) %>%
+  arrange(desc(count))
 
 
 # 3.5 Create bias score 
 
-outliers <- outliers %>%
+outliers_bias <- outliers %>%
+  filter((EVENT_STAT == 1 & EVENT_MON < .eval_time) | (EVENT_STAT == 0)) %>% 
   mutate(
     actual_survival = 1 - EVENT_STAT, # If they lived its 1 if they died its 0
     bias_score = abs(actual_survival - .pred_survival) # If they lived but where scored low then it will have a high bias score (1 - 0.2 = 0.8) and if they died but where scored high they will also have a high absolute bias (abs(0 - 0.9) = 0.9)
@@ -97,7 +119,20 @@ outliers <- outliers %>%
 
 # 3.6 IDs of patients identified as higher bias
 
-top_bias_ids <- outliers$PATIENT_ID[1:20]
+top_bias_ids <- outliers_bias$PATIENT_ID[1:20]
+
+
+
+ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(EVENT_STAT))) +
+  geom_point(alpha = 0.5) +
+  geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
+  labs(
+    title = "Predicted Survival vs. Actual Event Time",
+    subtitle = paste0("Patients who died despite high survival predictions at ", eval_time, " m"),
+    x = "Actual Event Time (Months)",
+    y = paste0("Predicted Survival Prob at ", eval_time)
+  ) +
+  theme_minimal()
 
 
 # 4.- Gene global contribution to score -----------------------------------
@@ -182,7 +217,12 @@ set.seed(456)
 
 # 6.1 Fold 20 times the whole data
 
-final_resamples <- vfold_cv(proof_genes_pt, v = 20, strata = EVENT_STAT)
+final_resamples <- mc_cv(
+  proof_genes_pt, 
+  prop = 0.8, 
+  times = 20, 
+  strata = EVENT_STAT
+)
 
 # 6.2 Apply the final workflow to the resamples
 
@@ -214,18 +254,17 @@ res_auc_5y <- final_wf %>%
     eval_time = c(36, 60, 120) # 5 and 10 years
   )
 
-
-
 collect_metrics(res_auc_5y)
 
 # 6.4 Make a df with the resample metrics
 
 resamples <- bind_rows(final_resample_results$.metrics)
 
+
 # 6.4.2 Again create data frame but this time with the distinct areas under the curve 
 
-resamples_auc <- 
-  bind_rows(res_auc_5y$.metrics) %>% 
+resamples_auc <- res_auc_5y %>%
+  collect_metrics(summarize = FALSE) %>% 
   na.omit()
 
 # 6.4.2.2 Create object wiuth mean, standard deviation, 95% confidence interval and standard error of the different time points
@@ -279,9 +318,17 @@ ggplot(summary_auc, aes(x = factor(.eval_time), y = mean)) +
            vjust = -1)
 
 
+
+ggplot(resamples_auc, aes(x = reorder(id, .estimate), y = .estimate)) + # Reorder so that it gives an increasing graph
+  geom_point() +
+  labs(x = "Folds", y = "Estimate", title = "Refold: C-score") +
+  facet_wrap(~ .eval_time, ncol = 1)
+
+
+
 # 6.7 From the fold outlier identify different clinical characteristics
 
-for (i in c(8, 9, 20, 18)) { # Here add the number of the folds to analyze
+for (i in c(17, 14, 7, 15)) { # Here add the number of the folds to analyze
   
 refold <- final_resamples$splits[[i]] # Gives the split of each fold
 
@@ -299,11 +346,40 @@ meta_testid <- ml_metadata[ml_metadata$PATIENT_ID %in% rownames(test_ids),]
 
 # Print the counts of desired characteristics of patrients in the i fold test data
 
-print(test_ids %>% 
-  rownames_to_column("PATIENT_ID") %>% 
-  left_join(meta_testid, by = "PATIENT_ID") %>% 
-  dplyr::count(CLAUDIN_SUBTYPE, OS_STATUS))
+print(
+  test_ids %>% 
+    tibble::rownames_to_column("PATIENT_ID") %>% 
+    dplyr::left_join(
+      meta_testid,
+      by = "PATIENT_ID",
+      suffix = c("", ".drop")
+    ) %>% 
+    dplyr::select(-dplyr::ends_with(".drop")) %>% 
+    dplyr::group_by(CLAUDIN_SUBTYPE, EVENT_STAT) %>% 
+    dplyr::summarise(
+      mean_OS = mean(EVENT_MON, na.rm = TRUE),
+      n = dplyr::n(),
+      .groups = "drop"   # removes all grouping from the output
+    )
+)
 
+
+print(
+  test_ids %>% 
+    tibble::rownames_to_column("PATIENT_ID") %>% 
+    dplyr::left_join(
+      meta_testid,
+      by = "PATIENT_ID",
+      suffix = c("", ".drop")
+    ) %>% 
+    dplyr::select(-dplyr::ends_with(".drop")) %>% 
+    dplyr::group_by(EVENT_STAT) %>% 
+    dplyr::summarise(
+      mean_OS = mean(EVENT_MON, na.rm = TRUE),
+      n = dplyr::n(),
+      .groups = "drop"   # removes all grouping from the output
+    )
+)
 
 # Aditionally print the names and id of patient identified as high bias of the train set
 
@@ -312,7 +388,76 @@ print(paste0(metadata.ER_POS_SURV$CLAUDIN_SUBTYPE[metadata.ER_POS_SURV$PATIENT_I
        top_bias_ids[top_bias_ids %in% rownames(test_ids)])
 )
 
+
+test_pred_refold <- predict(final_fit, new_data =  test_ids, type = "linear_pred")
+test_ids$.pred_linear_pred <- test_pred_refold$.pred_linear_pred
+
+time_roc_refolds <- timeROC(
+  T = test_ids$EVENT_MON,
+  delta = test_ids$EVENT_STAT,
+  marker = - test_ids$.pred_linear_pred,
+  cause = 1,
+  times = c(36, 60, 120),  # 1y, 3y, 5y, 6y, 10y
+  iid = TRUE
+)
+
+plot_roc_bias <- map_df(c(36, 60, 120), function(i){
+  
+  time_label <- i
+  
+  data.frame(
+    
+    FP = time_roc_refolds$FP[,paste0("t=", i)],
+    
+    TP = time_roc_refolds$TP[,paste0("t=", i)],
+    
+    Time = factor(i)
+  )
+  
+})
+
+
+legend_labels_bias <- 
+  paste0("t=", time_roc_refolds$times, " (AUC: ", 100 * round(time_roc_refolds$AUC, 3), "%)")
+
+facet_labels_bias <- 
+  data.frame(
+    Time = factor(c(36, 60, 120)),
+    AUC_Text = paste0("AUC: ", round(100 * as.numeric(time_roc_refolds$AUC[1:3]), 3), "%")
+  )
+
+p1 <- ggplot(data = plot_roc_bias, aes(x = FP, y = TP, color = Time)) +
+  geom_line(linewidth = 1) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  labs( 
+    title = paste0("Time-Dependent ROC Curves for fold ", i),
+    subtitle = "Comparing model performance across different horizons",
+    x = "1 - Specificity (FP)",
+    y = "Sensitivity (TP)",
+    color = "Time Point"
+  ) + 
+  scale_color_viridis_d(labels = legend_labels_bias) 
+
+print(p1)
+
+p2 <- ggplot(data = plot_roc_bias, aes(x = FP, y = TP)) +
+  geom_line(color = "darkblue", linewidth = 1) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  facet_wrap(~ Time, ncol = 2) + 
+  theme_bw() +
+  labs(
+    title = paste0("Time-Dependent ROC Curves for fold ", i),
+    x = "False Positive Rate",
+    y = "True Positive Rate"
+  ) +
+  geom_text(data = facet_labels_bias, 
+            aes(x = 0.75, y = 0.1, label = AUC_Text), 
+            size = 4, fontface = "bold")
+
+print(p2)
+
 }
+
 
 
 # 7.- Observe distributions and shapiro -----------------------------------
@@ -374,15 +519,32 @@ ggplot(proof_genes_pt.cox, aes(y = SCORE, x = PAM50, fill = PAM50)) +
 proof_genes_pt.long<- 
   proof_genes_pt.cox %>% 
   pivot_longer(
-    cols = c(SURGERY, CHEMO), 
+    cols = c(SURGERY, CHEMO, HORMONE), 
     names_to = "Parameter",
     values_to = "Value"
   )
+
+
+# 7.4 Wilcox test of desired data
+
+results_wilcox_treat <- proof_genes_pt.long %>%
+  dplyr::select(EVENT_STAT, Parameter, Value, SCORE) %>% 
+  group_by(Parameter, Value) %>%
+  group_modify(~ {
+    test <- wilcox.test(SCORE ~ EVENT_STAT, data = .)
+    tidy(test)
+  }) %>%
+  ungroup() %>% 
+  mutate(adj_p_value = p.adjust(p.value, method = "BH"))
+
+print(results_wilcox_treat$adj_p_value)
 
 # 7.4.3.2 Plot
 
 ggplot(data = proof_genes_pt.long, aes(y = SCORE, x = Value, fill = Value)) +
   geom_boxplot() + 
-  facet_wrap(~ Parameter + EVENT_STAT, scales = "free_x", ncol = 2) + 
+  facet_wrap(~ Parameter + EVENT_STAT, scales = "free_x", ncol = 2,  labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) + 
   scale_fill_paletteer_d("palettesForR::Pastels") + 
   theme_gray(base_size = 18)
+
+
