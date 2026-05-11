@@ -62,6 +62,7 @@ lr_wf <- workflow() %>%
 
 
 # 3.- Selecting best penalizing parameters ------------------------------------
+if(best_params$penalty != 0.2154435 & best_params$mixture != 0){
 
 set.seed(123)
 
@@ -99,6 +100,9 @@ collect_metrics(res_ml)
 
 best_params <- select_best(res_ml, metric = "concordance_survival")
 
+}else{
+  print("Parameter selected on MC cross validation")
+}
 
 
 # 4.- Actual training -----------------------------------------------------
@@ -111,6 +115,8 @@ final_wf <- finalize_workflow(lr_wf, best_params)
 
 final_fit <- fit(final_wf, data = train_data)
 
+
+
 # 4.2.2 Observing genes that are maintained after penalziation
 
 library(broom)
@@ -121,8 +127,38 @@ coef_tbl <- tidy(final_fit) %>%
 
 cat(coef_tbl$term, sep = ", ")
 
+# train_data.final <- bake(extract_recipe(final_fit), new_data = train_data)
+
+# 4.3 Predictions on train data
+
+train_pred <- predict(final_fit, new_data = train_data, type = "linear_pred")
+
+train_pred <- 
+  train_pred %>% 
+  as.data.frame()
+
+# 4.3.2 Object with train data and its predicted scores
+
+train_data2 <- 
+  train_data %>% 
+  mutate(risk_score = train_pred$.pred_linear_pred) 
+
+# 4.4 Using those scores to calculate the cutpoint
+
+true_cut <- 
+  surv_cutpoint(
+    data = train_data2, 
+    time = "EVENT_MON", 
+    event = "EVENT_STAT", 
+    variables = "risk_score"
+  )
+
+
+median(train_data2$risk_score)
 
 # 5.- Testing -------------------------------------------------------------
+
+#test_data.final <- bake(extract_recipe(final_fit), new_data = test_data)
 
 # 5.1 Predictions on test data
 
@@ -138,17 +174,20 @@ test_data$risk_score <- test_pred$.pred_linear_pred
 # 5.2.2 Dividing the groups by median so as to establish a high and low risk and create a column
 
 test_data$risk_group <- as.factor(ifelse(
-  test_data$risk_score < median(test_data$risk_score),
+  test_data$risk_score < median(train_data2$risk_score),
   "High",
   "Low"
-))
-
-surv_cutpoint(
-  data = test_data, 
-  time = "EVENT_MON", 
-  event = "EVENT_STAT", 
-  variables = "risk_score"
 )
+)
+
+test_data$risk_group <- as.factor(ifelse(
+  test_data$risk_score < true_cut$cutpoint[1,1],
+  "High",
+  "Low"
+)
+)
+
+
 
 test_data$risk_group <- relevel(test_data$risk_group, ref = "Low")
 
@@ -168,8 +207,8 @@ ggsurvplot(fit_km,
            pval = TRUE, 
            risk.table = TRUE,
            
-           title = "Recurrence ER+ METABRIC",
-           ylab = "Recurrence probability",
+           title = "Survival ER+ METABRIC",
+           ylab = "Survival probability",
            font.title = 30,
            legend = "bottom",
            font.legend = 22,
@@ -223,14 +262,64 @@ library(timeROC)
 time_roc <- timeROC(
   T = test_data$EVENT_MON,
   delta = test_data$EVENT_STAT,
-  marker = -test_pred$.pred_linear_pred,
+  marker = - test_pred$.pred_linear_pred,
   cause = 1,
   times = c(12, 36, 60, 72, 120),  # 1y, 3y, 5y, 6y, 10y
   iid = TRUE
 )
 
+# 7.2 Object with AUC at selected time points
+
 auc <- time_roc$AUC %>% 
   as.data.frame()
+
+# 7.3 Loop that creates data frame with true positive and falsa positives of each time point
+
+plot_roc <- map_df(c(12, 36, 60, 72, 120), function(i){
+  
+  
+  data.frame(
+    
+    FP = time_roc$FP[,paste0("t=", i)],
+    
+    TP = time_roc$TP[,paste0("t=", i)],
+    
+    Time = factor(i),
+    
+    data_set = "METABRIC"
+  )
+  
+})
+
+
+# 7.3.2 Object with labels for the plot with the numerical values of the AUCs
+
+# 7.3.3 Same thing but for facet wrap labels
+
+facet_labels <- 
+  data.frame(
+    Time = factor(c(12, 36, 60, 72, 120)),
+    AUC_Text = paste0("AUC: ", round(100 * as.numeric(time_roc$AUC[1:5]), 3), "%"),
+    data_set = "METABRIC"
+  )
+
+
+
+# 7.4.2 Plot of the ROC curve with facet wraping of the different time points
+
+ggplot(data = plot_roc, aes(x = FP, y = TP)) +
+  geom_line(color = "darkblue", linewidth = 1) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  facet_wrap(~ Time, ncol = 2) + 
+  theme_bw() +
+  labs(
+    title = "ROC Curves by Time Point",
+    x = "False Positive Rate",
+    y = "True Positive Rate"
+  ) +
+  geom_text(data = facet_labels, 
+            aes(x = 0.75, y = 0.1, label = AUC_Text), 
+            size = 4, fontface = "bold")
 
 
 # 8.- Independence test ---------------------------------------------------
@@ -256,7 +345,8 @@ proof_genes_pt.cox <-
          HORMONE = HORMONE_THERAPY ,
          CHEMO = CHEMOTHERAPY,
          SURGERY = BREAST_SURGERY,
-         PAM50 = CLAUDIN_SUBTYPE
+         PAM50 = CLAUDIN_SUBTYPE,
+         NPI = NPI
   ) %>% 
   dplyr::select(all_of(proof_genes),
                 surv_obj,
@@ -271,13 +361,22 @@ proof_genes_pt.cox <-
                 PAM50,
                 INTCLUST, 
                 EVENT_STAT,
-                EVENT_MON) %>%  
+                EVENT_MON,
+                NPI) %>%  
   na.omit()
 
 # 8.3 Multivariate cox comparing the variables including the score to test its independent value
 
-cox_model <- coxph(surv_obj ~ HORMONE + CHEMO + SURGERY + MENO + HER2 + AGE + LYMPH + SCORE +  PAM50 + INTCLUST, 
+
+coxph(surv_obj ~ AGE + LYMPH + SCORE, 
+      data = proof_genes_pt.cox)
+
+cox_model <- coxph(surv_obj ~ NPI + HORMONE + CHEMO + SURGERY + MENO + HER2 + AGE + LYMPH + SCORE +  PAM50 + INTCLUST, 
                    data = proof_genes_pt.cox)
+
+summary(coxph(surv_obj ~ MENO + AGE + LYMPH + SCORE, 
+      data = proof_genes_pt.cox))
+
 
 summary(cox_model)
 
@@ -289,7 +388,7 @@ independent_prog <- cox_model %>%
 
 # 9.- Results -------------------------------------------------------------
 
-# 9.1 Index number of the parameters to print the evaluation and to graph
+# 9.1 Index number of the parameters to print the evaluation and to g   raph
 
 num_param_compare <- c(9:21)
 
@@ -299,7 +398,7 @@ cat(paste0("Signature with ", length(coef_tbl$term), " genes (", paste(coef_tbl$
     paste0("The selected parameters were an alpha of ", best_params$mixture, " and a lambda of ", best_params$penalty),
     paste0("The signature got a C-score of ", concordance$concordance),
     paste0("HR of ", round(summary_cox$coefficients[2], 2), " (CI 95% of ", round(summary_cox$conf.int[3], 2), " - ", round(summary_cox$conf.int[4], 2), " pval ", summary_cox$coefficients[5], ")"),
-    paste0("AUC at 3 years of ", round(auc[1,], 2), " at 5 years of ", round(auc[2,], 2), " at 6 years of ", round(auc[3,], 2), " and at 10 years of ", round(auc[4,], 2)),
+    paste0("AUC at 1 year of ", round(auc[1,], 2), " at 3 years of ", round(auc[2,], 2), " at 5 years of ", round(auc[3,], 2), " at 7 years of ", round(auc[4,], 2), " and at 10 years of ", round(auc[5,], 2)),
     paste0("As an independence factor it has an HR of ", round(independent_prog$estimate[independent_prog$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog$conf.low[independent_prog$term == "SCORE"], 2), " - ", round(independent_prog$conf.high[independent_prog$term == "SCORE"], 2), " pval of ", independent_prog$p.value[independent_prog$term == "SCORE"], ")"),
     sep = ". "
 )
@@ -323,4 +422,5 @@ independent_prog %>%
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
   theme_minimal()
+
 
