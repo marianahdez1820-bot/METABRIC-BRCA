@@ -87,7 +87,7 @@ for (i in c(36, 60, 120)) {
   # 2.4 Object with metadata and score characteristics
   
   outlier_summary <- outliers %>%
-    inner_join(metadata.ER_POS_SURV, by = "PATIENT_ID", suffix = c("", ".drop")) %>%
+    inner_join(ml_metadata, by = "PATIENT_ID", suffix = c("", ".drop")) %>%
     dplyr::select(
       PATIENT_ID, 
       .pred_survival, 
@@ -134,7 +134,7 @@ for (i in c(36, 60, 120)) {
           group_by(CLAUDIN_SUBTYPE, EVENT_STAT) %>%
           summarise(
             count = n(),
-            avg_pred_survival = mean(.pred_survival),
+            avg_pred_event = mean(.pred_survival),
             avg_event_time = mean(EVENT_MON)
           ) %>%
           arrange(desc(count))
@@ -217,7 +217,7 @@ outliers_bias %>%
   group_by(EVENT_STAT, CLAUDIN_SUBTYPE, INTCLUST) %>%
   summarise(
     count = n(),
-    avg_pred_survival = mean(.pred_survival),
+    avg_pred_event = mean(.pred_survival),
     avg_event_time = mean(EVENT_MON)
   ) %>%
   arrange(desc(count))
@@ -469,7 +469,7 @@ for (i in c(17, 14, 7, 15)) { # Here add the number of the folds to analyze
   
   # Aditionally print the names and id of patient identified as high bias of the train set
   
-  print(paste0(metadata.ER_POS_SURV$CLAUDIN_SUBTYPE[metadata.ER_POS_SURV$PATIENT_ID %in% top_bias_ids[top_bias_ids %in% rownames(test_ids)]],
+  print(paste0(ml_metadata$CLAUDIN_SUBTYPE[ml_metadata$PATIENT_ID %in% top_bias_ids[top_bias_ids %in% rownames(test_ids)]],
                " ",
                top_bias_ids[top_bias_ids %in% rownames(test_ids)])
   )
