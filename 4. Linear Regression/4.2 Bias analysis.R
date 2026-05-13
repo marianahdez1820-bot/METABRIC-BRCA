@@ -1,6 +1,8 @@
 library(ggrepel)
 library(paletteer)
 library(patchwork)
+library(RColorBrewer)
+
 
 # 1.- Lasso impact analysis -----------------------------------------------
 
@@ -129,7 +131,7 @@ for (i in c(36, 60, 120)) {
   
   print(outliers_bias %>%
           filter(PATIENT_ID %in% top_bias_ids) %>% 
-          group_by(INTCLUST, EVENT_STAT) %>%
+          group_by(CLAUDIN_SUBTYPE, EVENT_STAT) %>%
           summarise(
             count = n(),
             avg_pred_survival = mean(.pred_survival),
@@ -142,9 +144,11 @@ for (i in c(36, 60, 120)) {
   
   outliers <- 
     outliers %>% 
-    mutate(quadrant = factor(ifelse(PATIENT_ID %in% top_bias_ids,
-                                    1,
-                                    0)))
+    mutate(quadrant = case_when(
+             PATIENT_ID %in% top_bias_ids & EVENT_STAT == 0 ~ 2,
+             PATIENT_ID %in% top_bias_ids & EVENT_STAT == 1 ~ 1,
+             TRUE ~ 0
+           ))
   
   print(outliers %>% 
           group_by(EVENT_STAT) %>% 
@@ -152,12 +156,19 @@ for (i in c(36, 60, 120)) {
   
   # 2.7.2 Plot
   
+  theme_embedded <- theme_classic(base_size = 25) + 
+    theme(
+      legend.position = c(0.95, 0.3), # Adjust coordinates (x, y) from 0 to 1
+      legend.background = element_rect(fill = alpha("white", 0.5))
+    )
+  
   # 2.7.2.1 Plot colored by EVENT_STAT
   
   p1 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(EVENT_STAT), shape = factor(EVENT_STAT))) +
     geom_point(size = 2, alpha = 0.7) + # Increased size and opacity
     stat_ellipse(type = "t", level = 0.95) + # Adds 95% confidence ellipse
     geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
+    scale_color_viridis_d() + 
     labs(
       title = "Event Status Distribution",
       x = paste0("Actual Event Time (Months)", eval_time),
@@ -165,24 +176,27 @@ for (i in c(36, 60, 120)) {
       color = "Event Stat",
       shape = "Event Stat"
     ) +
-    theme_minimal()
+    theme_embedded
   
   # 2.7.2.2 Plot colored by quadrant
   
-  p2 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = quadrant, shape = factor(EVENT_STAT))) +
+  p2 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(quadrant), shape = factor(EVENT_STAT))) +
     geom_point(size = 2, alpha = 0.7) +
     stat_ellipse(aes(group = quadrant), type = "t", level = 0.95) + 
     geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
+    scale_color_viridis_d() + 
     labs(
       title = "Quadrant Analysis",
       x = paste0("Actual Event Time (Months)", eval_time),
-      y = "Predicted Survival"
+      y = "Predicted Survival",
+      color = "Quadrant",
+      shape = "Event Stat"
     ) +
-    theme_minimal()
+    theme_embedded
   
   # 2.7.3 Combine and stack
   
-  print( p1 / p2)
+  print( p1 + p2)
   
   list[[i]] <- top_bias_ids
   
@@ -199,8 +213,8 @@ bias_diff_id <- unique(c(list[[36]], list[[60]], list[[120]]))
 # 2.9 Observe characteristics of the bias_intersect patients
 
 outliers_bias %>%
-  filter(PATIENT_ID %in% bias_interesct) %>% 
-  group_by(INTCLUST, CELLULARITY) %>%
+  filter(PATIENT_ID %in% bias_diff_id) %>% 
+  group_by(EVENT_STAT, CLAUDIN_SUBTYPE, INTCLUST) %>%
   summarise(
     count = n(),
     avg_pred_survival = mean(.pred_survival),
