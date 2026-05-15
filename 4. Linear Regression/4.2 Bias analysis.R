@@ -107,7 +107,7 @@ for (i in c(36, 60, 120)) {
   
   outliers_bias <- outlier_summary %>%
     mutate(
-      bias_score = (((1 - EVENT_STAT) - .pred_survival) ^ 2) * ((EVENT_MON - .eval_time) * (( 1 - (1 + EVENT_STAT)) + (1 - EVENT_STAT)))
+      bias_score = (((1 - EVENT_STAT) - .pred_survival) ^ 2) * (EVENT_MON - .eval_time) * ( 1 - (2 * EVENT_STAT))
     ) %>%
     arrange(desc(bias_score))
   
@@ -131,7 +131,7 @@ for (i in c(36, 60, 120)) {
   
   print(outliers_bias %>%
           filter(PATIENT_ID %in% top_bias_ids) %>% 
-          group_by(CLAUDIN_SUBTYPE, EVENT_STAT) %>%
+          group_by(CLAUDIN_SUBTYPE, INTCLUST) %>%
           summarise(
             count = n(),
             avg_pred_event = mean(.pred_survival),
@@ -156,7 +156,7 @@ for (i in c(36, 60, 120)) {
   
   # 2.7.2 Plot
   
-  theme_embedded <- theme_classic(base_size = 25) + 
+  theme_embedded <- theme_linedraw(base_size = 25) + 
     theme(
       legend.position = c(0.95, 0.3), # Adjust coordinates (x, y) from 0 to 1
       legend.background = element_rect(fill = alpha("white", 0.5))
@@ -210,17 +210,113 @@ bias_interesct <- intersect(intersect(list[[36]], list[[60]]) , list[[120]])
 
 bias_diff_id <- unique(c(list[[36]], list[[60]], list[[120]]))
 
-# 2.9 Observe characteristics of the bias_intersect patients
+# 2.9 Observe characteristics of the bias_diff_id patients
 
 outliers_bias %>%
   filter(PATIENT_ID %in% bias_diff_id) %>% 
-  group_by(EVENT_STAT, CLAUDIN_SUBTYPE, INTCLUST) %>%
+  group_by(EVENT_STAT, INTCLUST) %>%
   summarise(
     count = n(),
     avg_pred_event = mean(.pred_survival),
     avg_event_time = mean(EVENT_MON)
   ) %>%
   arrange(desc(count))
+
+# 2.10 Bias score based on pred time not on time evaluated
+
+outlier_pred_time <- model_diagnostics %>% 
+  unnest(.pred) %>% 
+  dplyr::select(- all_of(proof_genes)) %>% 
+  group_by(PATIENT_ID) %>% 
+  mutate(bias_score = # Notice the mean in .pred sruvival is the mean of each oatients prediction at all 3 time points since in this case we dont care about time point evaluated but on time point predicted so we also care about the global % predicted 
+          (((1 - EVENT_STAT) - mean(.pred_survival)) ^ 2) * (EVENT_MON - .pred_time) * ( 1 - (2 * EVENT_STAT))
+  ) %>%
+  ungroup() %>% 
+  arrange(desc(bias_score))
+
+# 2.10.2 Identify the highest bias patients
+
+# 2.10.3 Obtain mean and sd and then filter based on patients higher than determined SD
+
+extreme_outliers_pred_time <-  
+  outlier_pred_time %>% 
+  mutate(mean_bias = mean(bias_score),
+         sd_bias = sd(bias_score)) %>% 
+  filter(bias_score > (mean_bias + 1 * sd_bias))
+
+# 2.10.3 Obtain their IDs
+
+top_bias_ids_pred_time <- extreme_outliers_pred_time$PATIENT_ID
+
+
+# 2.10.4 Add a column identifying patients as top bias or not
+
+outlier_pred_time <- 
+  outlier_pred_time %>% 
+  mutate(quadrant = case_when(
+    PATIENT_ID %in% top_bias_ids & EVENT_STAT == 0 ~ 2,
+    PATIENT_ID %in% top_bias_ids & EVENT_STAT == 1 ~ 1,
+    TRUE ~ 0
+  ))
+
+print(outlier_pred_time %>% 
+        group_by(EVENT_STAT) %>% 
+        dplyr::count(quadrant))
+
+# 2.10.5 Plot prepare theme
+
+theme_embedded <- theme_linedraw(base_size = 25) + 
+  theme(
+    legend.position = c(0.5, 0.1), # Adjust coordinates (x, y) from 0 to 1
+    legend.background = element_rect(fill = alpha("white", 0.5))
+  )
+
+# 2.10.5.1 Plot colored by EVENT_STAT
+
+p1_global <- ggplot(outlier_pred_time, aes(x = EVENT_MON, y = .pred_survival, color = factor(EVENT_STAT), shape = factor(EVENT_STAT))) +
+  geom_point(size = 2, alpha = 0.7) + # Increased size and opacity
+  stat_ellipse(type = "t", level = 0.95) + # Adds 95% confidence ellipse
+  geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
+  scale_color_viridis_d() + 
+  labs(
+    title = "Event Status Distribution",
+    x = paste0("Actual Event Time (Months)", eval_time),
+    y = "Predicted Survival",
+    color = "Event Stat",
+    shape = "Event Stat"
+  ) +
+  theme_embedded
+
+p2_global <- ggplot(outlier_pred_time, aes(x = EVENT_MON, y = .pred_time, color = factor(quadrant), shape = factor(EVENT_STAT))) +
+  geom_point(size = 2, alpha = 0.7) +
+  stat_ellipse(aes(group = quadrant), type = "t", level = 0.95) + 
+  geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
+  scale_color_viridis_d() + 
+  labs(
+    title = "Quadrant Analysis",
+    x = paste0("Actual Event Time (Months)", eval_time),
+    y = "Predicted time",
+    color = "Quadrant",
+    shape = "Event Stat"
+  ) +
+  theme_embedded
+
+p1 + p2
+
+# 2.11 Brier score
+
+model_diagnostics %>% 
+  brier_survival(truth = surv_obj, .pred)
+
+
+# 2.12 Martingale and Schofeild residuals
+
+cox.zph(cox_model)
+
+ggcoxzph(cox.zph(cox_model))
+
+ggcoxdiagnostics(cox_model, type = "martingale",
+                 linear.predictions = FALSE, ggtheme = theme_bw())
 
 # 3.- Gene global contribution to score -----------------------------------
 
@@ -632,3 +728,6 @@ ggplot(data = proof_genes_pt.long, aes(y = SCORE, x = Value, fill = Value)) +
   facet_wrap(~ Parameter + EVENT_STAT, scales = "free_x", ncol = 2,  labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) + 
   scale_fill_paletteer_d("palettesForR::Pastels") + 
   theme_gray(base_size = 18)
+
+
+
