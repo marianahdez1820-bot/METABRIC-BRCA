@@ -7,6 +7,8 @@ library(survminer)
 
 # 1.1 Predict with the parameters from the fit to the TCGA data
 
+
+
 tcga_results <- predict(final_fit, new_data = proof_genes_pt.tcga, type = "linear_pred") %>%
   bind_cols((proof_genes_pt.tcga %>% 
                rownames_to_column("sampleID")))
@@ -29,11 +31,11 @@ tcga_results$risk_group <- relevel(tcga_results$risk_group, ref = "Low Risk")
 
 # 2.4 Fit the KM curve
 
-km_fit <- survfit(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = tcga_results)
+km_fit.tcga <- survfit(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = tcga_results)
 
 # 2.5.2 Plot
 
-ggsurvplot(km_fit, 
+ggsurvplot(km_fit.tcga, 
            data = tcga_results, 
            pval = TRUE, 
            risk.table = TRUE,
@@ -86,6 +88,17 @@ res_auc_tcga <- timeROC(T = tcga_results$EVENT_MON,
 
 res_auc_res_tcga <- res_auc_tcga$AUC %>% 
   as.data.frame()
+
+
+tcga_results <- 
+  tcga_results %>% 
+  mutate(EVENT_STAT = factor(EVENT_STAT))
+
+global_roc.tcga <- roc_curve(tcga_results,
+                                 EVENT_STAT,
+                                 .pred_linear_pred
+                             ) %>%
+  mutate(label = "TCGA")
 
 
 # 3.2 Combine all time points into a long dataframe
@@ -159,7 +172,8 @@ proof_genes_pt.tcga.cox <-
     SURGERY = factor(breast_carcinoma_primary_surgical_procedure_name),
     NEO = history_of_neoadjuvant_treatment,
     OTHER_TX = additional_pharmaceutical_therapy,
-    TARG_TX = targeted_molecular_therapy
+    TARG_TX = targeted_molecular_therapy,
+    HER2 = HER2_Final_Status_nature2012
   ) %>%
   dplyr::select(all_of(proof_genes),
                 surv_obj,
@@ -168,16 +182,20 @@ proof_genes_pt.tcga.cox <-
                 AGE,
                 SCORE,
                 EVENT_STAT,
+                EVENT_MON,
                 RADIO,
                 NEO,
                 OTHER_TX,
                 TARG_TX,
                 SURGERY,
-                risk_group) 
+                risk_group,
+                HER2) 
 
 # 4.2 Actual cox model with parameters to evaluare
 
-cox_model.tcga <- coxph(surv_obj ~ SCORE + AGE + LYMPH + PAM50,  data = proof_genes_pt.tcga.cox)
+cox_model.tcga <- coxph(surv_obj ~ SCORE + AGE + LYMPH + PAM50 + strata(HER2),  data = proof_genes_pt.tcga.cox)
+
+summary(coxph(surv_obj ~ SCORE + AGE + LYMPH,  data = proof_genes_pt.tcga.cox))
 
 # 4.3 Tidy format
 
@@ -190,9 +208,10 @@ summary(cox_model.tcga)
 
 # 4.4 Results to paragraph 
 
-num_param_compare <- c(2:7)
+num_param_compare <- c(2:9)
 
 cat(paste0("The signature on TCGA got a C-score of ", round(c_index_results.tcga$concordance, 2)),
+    paste("AUC at 1 year of ", res_auc_res_tcga$.[1], ", at 3 years of ", res_auc_res_tcga$.[2], ", at 5 years of ", res_auc_res_tcga$.[3], ", at 6 years of ", res_auc_res_tcga$.[4], ", at 10 years of ", res_auc_res_tcga$.[5]),
     paste0("an HR of ", round(summary_cox_tcga$coefficients[2], 2), " (CI 95% of ", round(summary_cox_tcga$conf.int[3], 2), " - ", round(summary_cox_tcga$conf.int[4], 2), " pval ", summary_cox_tcga$coefficients[5], ")"),
     paste0("As an independence factor it has an HR of ", round(independent_prog.tcga$estimate[independent_prog.tcga$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog.tcga$conf.low[independent_prog.tcga$term == "SCORE"], 2), " - ", round(independent_prog.tcga$conf.high[independent_prog.tcga$term == "SCORE"], 2), " pval of ", independent_prog.tcga$p.value[independent_prog.tcga$term == "SCORE"], ")"),
     sep = ". "
@@ -203,7 +222,6 @@ cat(paste0(independent_prog.tcga$term[num_param_compare], " with its HR of ", ro
 )
 
 
-independent_prog.tcga[num_param_compare, c(1, 2, 5, 6, 7)]
 
 # 4.5 Forest plot ignoring values that tend to infinite
 
@@ -233,10 +251,13 @@ ggplot(proof_genes_pt.tcga.cox, aes(y = SCORE, x = PAM50, fill = PAM50)) +
 
 # 5.1.2 Boxplot comparing to PAM50 facet wrapped by event status
 
+
 ggplot(proof_genes_pt.tcga.cox, aes(y = SCORE, x = PAM50, fill = PAM50)) +
   geom_boxplot() +
   scale_fill_paletteer_d("ggsci::deep_purple_material") +
-  facet_wrap( ~ EVENT_STAT)
+  facet_wrap(~ EVENT_STAT,
+             scales = "free_x",
+             labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased")))
 
 
 # 5.2 Wilcoxon test where on each treatment modality or PAM50 group we compare deceased vs live patients (so if we have patients that recieved chemo we compare the score on patients that lived vs died and then on those who did not recieve chemo and so on with every treatment)
@@ -293,4 +314,193 @@ ggplot(data = proof_genes_pt.tcga_long, aes(y = SCORE, x = Value, fill = Value))
   scale_fill_paletteer_d("palettesForR::Pastels") + 
   theme_gray(base_size = 18)
 
+# 5.4 Cox based on time
+
+for (i in vars) {
+  formula <- as.formula(paste("surv_obj ~", i, "* SCORE"))
+  print(summary(coxph(formula, data = proof_genes_pt.tcga.cox)))
+}
+
+
+
+# 6.- Outlier analysis ----------------------------------------------------
+
+
+# 6.1 Utilize the fitted object to make predictions based on time
+
+# 6.1.1 Change to numeric 
+
+tcga_results <- 
+  tcga_results %>% 
+  mutate(EVENT_STAT = as.numeric(EVENT_STAT))
+
+# 6.1.2 Augment on different time points
+
+model_diagnostics <- augment(
+  final_fit, 
+  new_data = tcga_results, 
+  eval_time = c(36, 60, 120) # Times in months (3, 5, 10 years)
+)
+
+# 6.2 Create list to then add the results
+
+list <- list()
+
+
+#> 6.3 For loop that at each desired time point calculates the bias scores, extracts patients with high bias scores
+#> observe metadata of outlier patients and plot the distribution of the prediction with the actual event time
+
+for (i in c(36, 60, 120)) {
+  
+  eval_time <- i
+  
+  # 6.3.1 Unnest the predictions and find the biggest outliers on a set point and event
+  
+  outliers <- model_diagnostics %>%
+    dplyr::select(sampleID, EVENT_MON, EVENT_STAT, .pred) %>%
+    unnest(.pred) %>%
+    filter(.eval_time == eval_time) %>% 
+    arrange(desc(.pred_survival)) # Siunce our signature as it goes up, the predicted mortality goes down we see which patients died early who were predicted to die late or survive
+  
+  
+  # 6.3.2 Object with metadata and score characteristics
+  
+  outlier_summary <- outliers %>%
+    inner_join(refined_data_unique, by = "sampleID", suffix = c("", ".drop")) %>%
+    dplyr::select(
+      sampleID, 
+      .pred_survival, 
+      EVENT_STAT, 
+      EVENT_MON, 
+      PAM50Call_RNAseq, 
+      lymph_node_examined_count, 
+      .eval_time
+    ) 
+  
+  
+  # 6.3.3 Create bias score for defined time
+  
+  outliers_bias <- outlier_summary %>%
+    mutate(
+      bias_score = (((1 - EVENT_STAT) - .pred_survival) ^ 2) * ((EVENT_MON - .eval_time) * ( 1 - 2(EVENT_STAT)))
+    ) %>%
+    arrange(desc(bias_score))
+  
+  # 6.4 Identify the highest bias patients
+  
+  # 6.4.1 Obtain mean and sd and then filter baed on patients higher than determined SD
+  
+  extreme_outliers <- 
+    outliers_bias %>% 
+    mutate(mean_bias = mean(bias_score),
+           sd_bias = sd(bias_score)) %>% 
+    filter(bias_score > (mean_bias + 1 * sd_bias))
+  
+  # 6.4.2 Obtain their IDs
+  
+  top_bias_ids <- extreme_outliers$sampleID
+  
+  print(length(top_bias_ids))
+  
+  # 6.4.3 Identify different characteristics of patients identified as top bias
+  
+  print(outliers_bias %>%
+          filter(sampleID %in% top_bias_ids) %>% 
+          group_by(PAM50Call_RNAseq, EVENT_STAT) %>%
+          summarise(
+            count = n(),
+            avg_pred_event = mean(.pred_survival),
+            avg_event_time = mean(EVENT_MON)
+          ) %>%
+          arrange(desc(count))
+  )
+  
+  # 6.5.1 Add a column identifying patients as top bias or not
+  
+  outliers <- 
+    outliers %>% 
+    mutate(quadrant = case_when(
+      sampleID %in% top_bias_ids & EVENT_STAT == 0 ~ 2,
+      sampleID %in% top_bias_ids & EVENT_STAT == 1 ~ 1,
+      TRUE ~ 0
+    ))
+  
+  print(outliers %>% 
+          group_by(EVENT_STAT) %>% 
+          dplyr::count(quadrant))
+  
+  # 6.5.2 Plot
+  
+  theme_embedded <- theme_classic(base_size = 25) + 
+    theme(
+      legend.position = c(0.95, 0.3), # Adjust coordinates (x, y) from 0 to 1
+      legend.background = element_rect(fill = alpha("white", 0.5))
+    )
+  
+  # 6.5.2.1 Plot colored by EVENT_STAT
+  
+  p1 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(EVENT_STAT), shape = factor(EVENT_STAT))) +
+    geom_point(size = 2, alpha = 0.7) + # Increased size and opacity
+    stat_ellipse(type = "t", level = 0.95) + # Adds 95% confidence ellipse
+    geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
+    scale_color_viridis_d() + 
+    labs(
+      title = "Event Status Distribution",
+      x = paste0("Actual Event Time (Months)", eval_time),
+      y = "Predicted Survival",
+      color = "Event Stat",
+      shape = "Event Stat"
+    ) +
+    theme_embedded
+  
+  # 6.5.2.2 Plot colored by quadrant
+  
+  p2 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(quadrant), shape = factor(EVENT_STAT))) +
+    geom_point(size = 2, alpha = 0.7) +
+    stat_ellipse(aes(group = quadrant), type = "t", level = 0.95) + 
+    geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
+    scale_color_viridis_d() + 
+    labs(
+      title = "Quadrant Analysis",
+      x = paste0("Actual Event Time (Months)", eval_time),
+      y = "Predicted Survival",
+      color = "Quadrant",
+      shape = "Event Stat"
+    ) +
+    theme_embedded
+  
+  # 6.5.3 Combine and stack
+  
+  print( p1 + p2)
+  
+  list[[i]] <- top_bias_ids
+  
+}
+
+
+
+# 7.- Other scores --------------------------------------------------------
+
+# 7.1 Brier score
+
+eval_results.tcga <- final_fit %>%
+  augment(new_data = proof_genes_pt.tcga, eval_time = c(36, 60, 120)) 
+
+performance.tcga <- eval_results.tcga %>%
+  brier_survival(truth = surv_obj, .pred)
+
+print(performance.tcga)
+
+# 7.2 Martingale and Schofeild residuals
+
+cox.zph(cox_model.tcga)
+
+
+
+ggcoxzph(cox.zph(cox_model.tcga))
+
+
+
+ggcoxdiagnostics(cox_model.tcga, type = "martingale",
+                linear.predictions = FALSE, ggtheme = theme_bw())
 
