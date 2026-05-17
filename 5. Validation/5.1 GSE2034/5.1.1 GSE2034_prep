@@ -142,10 +142,12 @@ gene_expres_matrix <-
 
 proof_genes_pt_gse2034 <- as.data.frame(gene_expres_matrix)
 
-# 5.4 Keep only ER+ patients
+# 5.4 Keep only ER+ patients and filter by time limits
 
 metadata.gse.2034_er_pos <- metadata_gse.2034  %>% 
-  filter(ER_STAT == "ER+")
+  as.data.frame() %>% 
+  filter(ER_STAT == "ER+") %>% 
+  filter(EVENT_MON <= 180 & EVENT_MON >= 2) 
 
 # 5.5 Keep oly patients that are found on the metadata
 
