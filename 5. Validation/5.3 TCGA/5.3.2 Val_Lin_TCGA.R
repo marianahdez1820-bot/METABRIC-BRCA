@@ -24,8 +24,9 @@ tcga_results <- predict(final_fit, new_data = proof_genes_pt.tcga, type = "linea
 
 tcga_results <-
   tcga_results %>%
-  mutate(risk_group = factor(ifelse(.pred_linear_pred < true_cut$cutpoint$cutpoint[1], "High Risk", "Low Risk"))) # median(.pred_linear_pred) # true_cut$cutpoint$cutpoint[1],
-
+  mutate(risk_group = factor(ifelse(.pred_linear_pred <  median(.pred_linear_pred), 
+                             "High Risk", 
+                             "Low Risk"))) # median(.pred_linear_pred) # true_cut$cutpoint$cutpoint[1],
 
 # 2.3.2 Relevel so as to have low risk as reference
 
@@ -42,7 +43,7 @@ ggsurvplot(km_fit.tcga,
            pval = TRUE, 
            risk.table = TRUE,
            
-           title = "Validation in TCGA",
+           title = "Recurrence validation TCGA (39 genes METABRIC)",
            font.title = 30,
            legend = "bottom",
            font.legend = 22,
@@ -52,9 +53,9 @@ ggsurvplot(km_fit.tcga,
            font.legend.labs = 18,
            xlab = "Time (months)",
            
-           xlim = c(0, 300),         # Zoom in
+           xlim = c(0, 200),         # Zoom in
            break.time.by = 50,      # X axis breaks
-           ggtheme = theme_minimal(), # ggplot2 theme
+           ggtheme = theme_linedraw(), # ggplot2 theme
            
            linewidth = 3,                 # Line size
            palette = c("#E7B800", "#2E9FDF"), # Custom color palette
@@ -91,8 +92,8 @@ tcga_results <-
   mutate(EVENT_STAT = factor(EVENT_STAT))
 
 global_roc.tcga <- roc_curve(tcga_results,
-                        EVENT_STAT,
-                        .pred_linear_pred
+                             EVENT_STAT,
+                             .pred_linear_pred
 ) %>%
   mutate(label = "TCGA")
 
@@ -107,9 +108,9 @@ tcga_results <-
   mutate(EVENT_STAT = factor(EVENT_STAT))
 
 global_roc.tcga <- roc_curve(tcga_results,
-                                 EVENT_STAT,
-                                 .pred_linear_pred
-                             ) %>%
+                             EVENT_STAT,
+                             .pred_linear_pred
+) %>%
   mutate(label = "TCGA")
 
 
@@ -251,7 +252,7 @@ independent_prog.tcga %>%
   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
-  theme_minimal()
+  theme_linedraw()
 
 
 # 5.- Other analysis ------------------------------------------------------
@@ -521,5 +522,4 @@ ggcoxzph(cox.zph(cox_model.tcga))
 
 
 ggcoxdiagnostics(cox_model.tcga, type = "martingale",
-                linear.predictions = FALSE, ggtheme = theme_bw())
-
+                 linear.predictions = FALSE, ggtheme = theme_bw())
