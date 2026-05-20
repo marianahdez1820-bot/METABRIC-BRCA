@@ -259,9 +259,7 @@ outlier_pred_time <-
     TRUE ~ 0
   ))
 
-print(outlier_pred_time %>% 
-        group_by(EVENT_STAT) %>% 
-        dplyr::count(quadrant))
+
 
 # 2.10.5 Plot prepare theme
 
@@ -301,7 +299,7 @@ p2_global <- ggplot(outlier_pred_time, aes(x = EVENT_MON, y = .pred_time, color 
   ) +
   theme_embedded
 
-p1 + p2
+p1_global + p2_global
 
 # 2.11 Brier score
 
@@ -402,115 +400,46 @@ set.seed(456)
 final_resamples <- mc_cv(
   proof_genes_pt, 
   prop = 0.8, 
-  times = 20, 
+  times = 100, 
   strata = EVENT_STAT
 )
 
-# 5.2 Apply the final workflow to the resamples
 
-final_resample_results <- final_wf %>%
-  fit_resamples(
-    resamples = final_resamples,
-    metrics = metric_set(concordance_survival)
-  )
-
-# 5.2.2 Metrics
-
-collect_metrics(final_resample_results)
-
-# 5.3 Define the metrics with specific time points to resample for AUC
+# 5.2 Define metrics with specific evaluation times 
 
 survival_metrics <- metric_set(
   concordance_survival,
   roc_auc_survival
 )
 
-# 5.3 .2 Apply the workflow to the resamples with respect to the AUC
+# 5.3 Run the resamples
 
-set.seed(123)
-
-res_auc_5y <- final_wf %>%
+final_resample_results <- final_wf %>%
   fit_resamples(
     resamples = final_resamples,
     metrics = survival_metrics,
-    eval_time = c(36, 60, 120) # 5 and 10 years
+    eval_time = c(36, 60, 120),  # Required for time-dependent ROC
+    control = control_resamples(save_pred = TRUE) # Useful if you need predictions later
   )
 
-collect_metrics(res_auc_5y)
+# 5.3.2 Obtain metrics
 
-# 5.4 Make a df with the resample metrics
-
-resamples <- bind_rows(final_resample_results$.metrics)
+collect_metrics(final_resample_results)
 
 
-# 5.4.2 Again create data frame but this time with the distinct areas under the curve 
+# 5.4 Extract unsummarized metrics for every fold
 
-resamples_auc <- res_auc_5y %>%
-  collect_metrics(summarize = FALSE) %>% 
-  na.omit()
+resamples_all <- collect_metrics(final_resample_results, summarize = FALSE)
 
-# 5.4.2.2 Create object wiuth mean, standard deviation, 95% confidence interval and standard error of the different time points
+# 5.4.2 Extract the C-scores
 
-summary_auc <- resamples_auc %>%
-  group_by(.eval_time) %>%
-  summarise(
-    mean = mean(.estimate),
-    sd = sd(.estimate),
-    n = n(),
-    se = sd / sqrt(n),
-    lower = mean - 1.96 * se,
-    upper = mean + 1.96 * se
-  )
+resamples_c$id[resamples_c$.estimate == max(resamples_c$.estimate)]
 
-# 5.5 Add the fold numbers
-
-resamples$fold <- final_resample_results$id
-
-# 5.6 Plot The c score obtained at every fold and add a line with the median of the c scores obtained with the 20 folds
-
-ggplot(resamples, aes(x = reorder(fold, .estimate), y = .estimate)) + # Reorder so that it gives an increasing graph
-  geom_point() +
-  geom_hline(yintercept = mean(resamples$.estimate), linetype = "dashed", color = "red") +
-  annotate("text", x = 1.8, y = mean(resamples$.estimate),
-           label = paste0("Mean = ", round(mean(resamples$.estimate), 3)),
-           vjust = -1) + 
-  labs(x = "Folds", y = "Estimate", title = "Refold: C-score")+
-  annotate("text", x = 1.8, y = min(resamples$.estimate),
-           label = paste0("Min = ", round(min(resamples$.estimate), 3)),
-           vjust = -1) +
-  annotate("text", x = length(resamples$.estimate) - 0.5, y = max(resamples$.estimate),
-           label = paste0("Max = ", round(max(resamples$.estimate), 3)),
-           vjust = 2)
-
-
-# 5.6.2 Plot the mean areas under the curve with its confidence intervals
-
-ggplot(summary_auc, aes(x = factor(.eval_time), y = mean)) +
-  geom_point(size = 3) +
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
-  labs(x = "Time", y = "AUC", title = "Refold: Time-dependent AUC (mean ± 95% CI)") +
-  annotate("text", x = 1, y = summary_auc$mean[1],
-           label = paste0("Mean = ", round(summary_auc$mean[1], 3)),
-           vjust = -1) +
-  annotate("text", x = 2, y = summary_auc$mean[2],
-           label = paste0("Mean = ", round(summary_auc$mean[2], 3)),
-           vjust = -1) +
-  annotate("text", x = 3, y = summary_auc$mean[3],
-           label = paste0("Mean = ", round(summary_auc$mean[3], 3)),
-           vjust = -1)
-
-
-
-ggplot(resamples_auc, aes(x = reorder(id, .estimate), y = .estimate)) + # Reorder so that it gives an increasing graph
-  geom_point() +
-  labs(x = "Folds", y = "Estimate", title = "Refold: C-score") +
-  facet_wrap(~ .eval_time, ncol = 1)
-
-
+resamples_c$id[resamples_c$.estimate == min(resamples_c$.estimate)]
 
 # 5.7 From the fold outlier identify different clinical characteristics
 
-for (i in c(17, 14, 7, 15)) { # Here add the number of the folds to analyze
+for (i in c(35, 4)) { # Here add the number of the folds to analyze
   
   refold <- final_resamples$splits[[i]] # Gives the split of each fold
   
@@ -525,6 +454,8 @@ for (i in c(17, 14, 7, 15)) { # Here add the number of the folds to analyze
   # Uses the metadata and obtains only the patients in i folds test set
   
   meta_testid <- ml_metadata[ml_metadata$PATIENT_ID %in% rownames(test_ids),]
+  
+  test_ids$score <- predict(final_fit, new_data = test_ids, type = "linear_pred")$.pred_linear_pred
   
   # Print the counts of desired characteristics of patrients in the i fold test data
   
@@ -541,8 +472,10 @@ for (i in c(17, 14, 7, 15)) { # Here add the number of the folds to analyze
       dplyr::summarise(
         mean_OS = mean(EVENT_MON, na.rm = TRUE),
         n = dplyr::n(),
+        mean_score = mean(score),
         .groups = "drop"   # removes all grouping from the output
-      )
+      ),
+    n = 250
   )
   
   
@@ -565,9 +498,9 @@ for (i in c(17, 14, 7, 15)) { # Here add the number of the folds to analyze
   
   # Aditionally print the names and id of patient identified as high bias of the train set
   
-  print(paste0(ml_metadata$CLAUDIN_SUBTYPE[ml_metadata$PATIENT_ID %in% top_bias_ids[top_bias_ids %in% rownames(test_ids)]],
+  print(paste0(ml_metadata$CLAUDIN_SUBTYPE[ml_metadata$PATIENT_ID %in% bias_diff_id[bias_diff_id %in% rownames(test_ids)]],
                " ",
-               top_bias_ids[top_bias_ids %in% rownames(test_ids)])
+               bias_diff_id[bias_diff_id %in% rownames(test_ids)])
   )
   
   
@@ -583,60 +516,47 @@ for (i in c(17, 14, 7, 15)) { # Here add the number of the folds to analyze
     iid = TRUE
   )
   
-  plot_roc_bias <- map_df(c(36, 60, 120), function(i){
-    
-    time_label <- i
-    
-    data.frame(
-      
-      FP = time_roc_refolds$FP[,paste0("t=", i)],
-      
-      TP = time_roc_refolds$TP[,paste0("t=", i)],
-      
-      Time = factor(i)
-    )
-    
-  })
-  
-  
-  legend_labels_bias <- 
-    paste0("t=", time_roc_refolds$times, " (AUC: ", 100 * round(time_roc_refolds$AUC, 3), "%)")
-  
-  facet_labels_bias <- 
-    data.frame(
-      Time = factor(c(36, 60, 120)),
-      AUC_Text = paste0("AUC: ", round(100 * as.numeric(time_roc_refolds$AUC[1:3]), 3), "%")
-    )
-  
-  p1 <- ggplot(data = plot_roc_bias, aes(x = FP, y = TP, color = Time)) +
-    geom_line(linewidth = 1) + 
-    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
-    labs( 
-      title = paste0("Time-Dependent ROC Curves for fold ", i),
-      subtitle = "Comparing model performance across different horizons",
-      x = "1 - Specificity (FP)",
-      y = "Sensitivity (TP)",
-      color = "Time Point"
-    ) + 
-    scale_color_viridis_d(labels = legend_labels_bias) 
-  
-  print(p1)
-  
-  p2 <- ggplot(data = plot_roc_bias, aes(x = FP, y = TP)) +
-    geom_line(color = "darkblue", linewidth = 1) + 
-    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
-    facet_wrap(~ Time, ncol = 2) + 
-    theme_bw() +
-    labs(
-      title = paste0("Time-Dependent ROC Curves for fold ", i),
-      x = "False Positive Rate",
-      y = "True Positive Rate"
-    ) +
-    geom_text(data = facet_labels_bias, 
-              aes(x = 0.75, y = 0.1, label = AUC_Text), 
-              size = 4, fontface = "bold")
-  
-  print(p2)
+  # plot_roc_bias <- map_df(c(36, 60, 120), function(i){
+  #   
+  #   time_label <- i
+  #   
+  #   data.frame(
+  #     
+  #     FP = time_roc_refolds$FP[,paste0("t=", i)],
+  #     
+  #     TP = time_roc_refolds$TP[,paste0("t=", i)],
+  #     
+  #     Time = factor(i)
+  #   )
+  #   
+  # })
+  # 
+  # 
+  # legend_labels_bias <- 
+  #   paste0("t=", time_roc_refolds$times, " (AUC: ", 100 * round(time_roc_refolds$AUC, 3), "%)")
+  # 
+  # facet_labels_bias <- 
+  #   data.frame(
+  #     Time = factor(c(36, 60, 120)),
+  #     AUC_Text = paste0("AUC: ", round(100 * as.numeric(time_roc_refolds$AUC[1:3]), 3), "%")
+  #   )
+  # 
+  # 
+  # p2 <- ggplot(data = plot_roc_bias, aes(x = FP, y = TP)) +
+  #   geom_line(color = "darkblue", linewidth = 1) + 
+  #   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  #   facet_wrap(~ Time, ncol = 2) + 
+  #   theme_bw() +
+  #   labs(
+  #     title = paste0("Time-Dependent ROC Curves for fold ", i),
+  #     x = "False Positive Rate",
+  #     y = "True Positive Rate"
+  #   ) +
+  #   geom_text(data = facet_labels_bias, 
+  #             aes(x = 0.75, y = 0.1, label = AUC_Text), 
+  #             size = 4, fontface = "bold")
+  # 
+  # print(p2)
   
 }
 
@@ -661,7 +581,7 @@ ggplot(train_data2, aes(x = risk_score)) +
 
 ggplot(test_data, aes(x = risk_score, fill = factor(EVENT_STAT, labels = c("Alive", "Diceased")))) +
   geom_density(alpha = 0.4) +
-  theme_minimal() +
+  theme_linedraw() +
   labs(fill = "Event",
        x = "Risk score",
        y = "Density",
@@ -678,6 +598,7 @@ proof_genes_pt.cox <-
 results_wilcox <- proof_genes_pt.cox %>%
   dplyr::select(EVENT_STAT, PAM50, SCORE) %>% 
   group_by(PAM50) %>%
+  filter(n() != 1) %>% 
   group_modify(~ {
     test <- wilcox.test(SCORE ~ EVENT_STAT, data = .)
     tidy(test)
@@ -689,11 +610,13 @@ print(results_wilcox)
 
 # 6.4.2 Plot the  comparisons
 
-ggplot(proof_genes_pt.cox, aes(y = SCORE, x = PAM50, fill = PAM50)) +
+ggplot(proof_genes_pt.cox, aes(y = SCORE, x = INTCLUST, fill = INTCLUST)) +
   geom_boxplot() +
-  scale_fill_paletteer_d("ggsci::deep_purple_material") + 
+  scale_fill_paletteer_d("colorBlindness::Blue2Green14Steps") + 
   facet_wrap(~ EVENT_STAT, 
-             labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased")))
+             labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) +
+  theme_classic() + 
+  geom_vline(xintercept = 11)
 
 
 # 6.4.3 Prepare to plot the different comparisons
@@ -712,6 +635,7 @@ proof_genes_pt.long<-
 results_wilcox_treat <- proof_genes_pt.long %>%
   dplyr::select(EVENT_STAT, Parameter, Value, SCORE) %>% 
   group_by(Parameter, Value) %>%
+  filter(n() != 1) %>% 
   group_modify(~ {
     test <- wilcox.test(SCORE ~ EVENT_STAT, data = .)
     tidy(test)
@@ -721,13 +645,31 @@ results_wilcox_treat <- proof_genes_pt.long %>%
 
 print(results_wilcox_treat$adj_p_value)
 
+vars <- c("CHEMO", "HORMONE", "SURGERY")
+
+for (i in vars) {
+  formula <- as.formula(paste("surv_obj ~ ", i, " * SCORE"))
+  
+  proof_genes_pt.txcox <- 
+    proof_genes_pt.cox %>% 
+    group_by(.data[[i]]) %>%
+    filter(n_distinct(EVENT_STAT) == 2,
+           !(is.na(.data[[i]])),
+           !(.data[[i]] == "")
+           ) %>% 
+    ungroup()
+  
+  print(summary(coxph(formula , data = proof_genes_pt.txcox))
+)  
+  
+}
+
 # 6.4.3.2 Plot
 
 ggplot(data = proof_genes_pt.long, aes(y = SCORE, x = Value, fill = Value)) +
   geom_boxplot() + 
   facet_wrap(~ Parameter + EVENT_STAT, scales = "free_x", ncol = 2,  labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) + 
-  scale_fill_paletteer_d("palettesForR::Pastels") + 
-  theme_gray(base_size = 18)
-
-
+  scale_fill_paletteer_d("colorBlindness::Brown2Blue10Steps") + 
+  theme_linedraw(base_size = 18,
+                 ink = "#251325")
 
