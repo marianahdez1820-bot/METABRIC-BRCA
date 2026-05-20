@@ -81,7 +81,7 @@ res_auc.gse2034 <- timeROC(T = gse2034_results$EVENT_MON,
                            delta = gse2034_results$ EVENT_STAT,
                            marker = -gse2034_results$pred_z,
                            cause = 1, # The event code
-                           times = c(12, 36, 60, 72, 120), # 3, 5, and 10 years
+                           times = c(12, 36, 60, 120), # 3, 5, and 10 years
                            iid = TRUE)
 
 # 6.9.2 View the AUC values
