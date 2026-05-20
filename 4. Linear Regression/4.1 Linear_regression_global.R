@@ -42,8 +42,6 @@ lr_rec <- recipe(surv_obj ~ ., data = train_data) %>% # Survival object created 
   step_zv(all_predictors()) %>% # Eliminates variables with a single value
   step_nzv(all_predictors()) %>% # Eliminates highly sparse variables
   step_impute_mean(all_predictors()) %>% # Imputes NAs to mean of those variables
-  step_normalize(all_predictors())  %>% # Normalize all
-  step_spatialsign()
 
 
 # 2.2 Model
