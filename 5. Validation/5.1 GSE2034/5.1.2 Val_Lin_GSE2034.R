@@ -78,11 +78,11 @@ library(timeROC)
 # Area under the curve per time
 
 res_auc.gse2034 <- timeROC(T = gse2034_results$EVENT_MON,
-                   delta = gse2034_results$ EVENT_STAT,
-                   marker = -gse2034_results$pred_z,
-                   cause = 1, # The event code
-                   times = c(12, 36, 60, 72, 120), # 3, 5, and 10 years
-                   iid = TRUE)
+                           delta = gse2034_results$ EVENT_STAT,
+                           marker = -gse2034_results$pred_z,
+                           cause = 1, # The event code
+                           times = c(12, 36, 60, 72, 120), # 3, 5, and 10 years
+                           iid = TRUE)
 
 # 6.9.2 View the AUC values
 
@@ -99,15 +99,15 @@ gse2034_results <-
   mutate(EVENT_STAT = factor(EVENT_STAT))
 
 global_roc.gse2034 <- roc_curve(gse2034_results,
-                             EVENT_STAT,
-                             .pred_linear_pred
+                                EVENT_STAT,
+                                .pred_linear_pred
 ) %>%
   mutate(label = "GSE2034")
 
 
 # 3.2 Combine all time points into a long dataframe
 
-plot_roc.gse2034 <- map_df(c(12, 36, 60, 72, 120), function(i) { # This functions as a for loop
+plot_roc.gse2034 <- map_df(c(12, 36, 60, 120), function(i) { # This functions as a for loop
   time_label <- paste0("t=", i)
   
   data.frame(
@@ -122,8 +122,8 @@ plot_roc.gse2034 <- map_df(c(12, 36, 60, 72, 120), function(i) { # This function
 # 3.3 Labels for faceted plot
 
 facet_labels.gse2034 <- data.frame(
-  Time = factor(c(12, 36, 60, 72, 120)),
-  AUC_Text = paste0("AUC: ", 100 * round(as.numeric(res_auc.gse2034$AUC[1:5]), 3), "%"),
+  Time = factor(c(12, 36, 60, 120)),
+  AUC_Text = paste0("AUC: ", 100 * round(as.numeric(res_auc.gse2034$AUC[1:4]), 3), "%"),
   data_set = "GSE2034"
 )
 
@@ -182,7 +182,7 @@ cox_model.gse2034 <- coxph(
 
 
 cox_model.gse2034 <- coxph(surv_obj ~ SCORE:strata(time_group), 
-                                  data = gse2034_split.cox) 
+                           data = gse2034_split.cox) 
 
 independent_prog.gse2034 <- 
   cox_model.gse2034 %>% 
@@ -302,7 +302,7 @@ for (i in c(36, 60, 120)) {
   
   print(length(top_bias_ids))
   
- 
+  
   # 6.5.1 Add a column identifying patients as top bias or not
   
   outliers <- 
@@ -393,4 +393,3 @@ ggcoxzph(cox.zph(cox_model.gse2034))
 
 ggcoxdiagnostics(cox_model.gse2034, type = "martingale",
                  linear.predictions = FALSE, ggtheme = theme_bw())
-
