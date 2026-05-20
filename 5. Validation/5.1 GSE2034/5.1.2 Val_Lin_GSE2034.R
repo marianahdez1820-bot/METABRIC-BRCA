@@ -24,7 +24,7 @@ library(survminer)
 # Create risk groups based on the median of the predictions
 
 gse2034_results <- gse2034_results %>%
-  mutate(risk_group = as.factor(ifelse(.pred_linear_pred < median(.pred_linear_pred), "High Risk", "Low Risk")))
+  mutate(risk_group = as.factor(ifelse(.pred_linear_pred < median(.pred_linear_pred), "High Risk", "Low Risk"))) # median(.pred_linear_pred) # true_cut$cutpoint$cutpoint[1]
 
 # Fit the KM curve
 
@@ -36,8 +36,8 @@ ggsurvplot(km_fit,
            data = gse2034_results, 
            pval = TRUE, 
            risk.table = TRUE,
-           title = "Validation in GSE2034 (Untreated Cohort)",
-           font.title = 30,
+           title = "Recurrence validation GSE2034 (39 genes / untreated)",
+           font.title = 20,
            legend = "bottom",
            font.legend = 22,
            legend.title = "Risk group",
@@ -48,7 +48,7 @@ ggsurvplot(km_fit,
            
            xlim = c(0, 180),         # Zoom in
            break.time.by = 50,      # X axis breaks
-           ggtheme = theme_minimal(), # ggplot2 theme
+           ggtheme = theme_linedraw(), # ggplot2 theme
            
            linewidth = 3, 
            palette = c("#E41A1C", "#377EB8"),
@@ -217,10 +217,10 @@ independent_prog.gse2034 %>%
   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
-  theme_classic() +
+  theme_linedraw() +
   scale_y_discrete(labels = c(
-    "SCORE:strata(time_group)time_group=1" = "Time Group 1",
-    "SCORE:strata(time_group)time_group=2" = "Time Group 2"
+    "SCORE:strata(time_group)time_group=1" = "Time Group 1 (>70 months)",
+    "SCORE:strata(time_group)time_group=2" = "Time Group 2 (<70 months)"
   ))
 
 
