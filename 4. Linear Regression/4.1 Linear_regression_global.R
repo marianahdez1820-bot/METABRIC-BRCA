@@ -1,8 +1,9 @@
 library(tidymodels)
-library(readr)       # for importing data
-library(vip)
 library(censored)
 library(survminer)
+library(broom)
+library(survival)
+library(timeROC)
 
 # Initiasurvival# Initial object late_genes.patients created in preprocessing
 # Its made so that the modifications have to be done on preprocessing so even if the
@@ -40,8 +41,7 @@ lr_rec <- recipe(surv_obj ~ ., data = train_data) %>% # Survival object created 
   update_role(EVENT_MON, EVENT_STAT, new_role = "non_predictor") %>%
   step_dummy(all_nominal_predictors()) %>% 
   step_zv(all_predictors()) %>% # Eliminates variables with a single value
-  step_nzv(all_predictors()) %>% # Eliminates highly sparse variables
-  step_impute_mean(all_predictors()) %>% # Imputes NAs to mean of those variables
+  step_nzv(all_predictors()) # Eliminates highly sparse variables
 
 
 # 2.2 Model
@@ -60,7 +60,8 @@ lr_wf <- workflow() %>%
 
 
 # 3.- Selecting best penalizing parameters ------------------------------------
-if(best_params$penalty != 0.2154435 & best_params$mixture != 0){
+
+if(!exists("best_params")){
 
 set.seed(123)
 
@@ -117,7 +118,6 @@ final_fit <- fit(final_wf, data = train_data)
 
 # 4.2.2 Observing genes that are maintained after penalziation
 
-library(broom)
 
 coef_tbl <- tidy(final_fit) %>%
   filter(estimate != 0) %>%
@@ -191,9 +191,6 @@ test_data$risk_group <- relevel(test_data$risk_group, ref = "Low")
 
 # 5.3 Creating kapan meier curve
 
-library(survival)
-library(survminer)
-
 # 5.3.1 Based on the survival object compare the risk_groups created previously
 
 fit_km <- survfit(surv_obj ~ risk_group, data = test_data)
@@ -253,8 +250,6 @@ concordance <- concordance(
 # 7.- Area under de curve (AUC) per time --------------------------------------------------------
 
 
-library(timeROC)
-
 # 7.1 Creating object on testing data
 
 time_roc <- timeROC(
@@ -266,12 +261,18 @@ time_roc <- timeROC(
   iid = TRUE
 )
 
-# 7.2 Object with AUC at selected time points
+test_data <- 
+  test_data %>% 
+  mutate(EVENT_STAT = factor(EVENT_STAT))
 
-auc <- time_roc$AUC %>% 
-  as.data.frame()
+global_roc <- roc_curve(test_data,
+          EVENT_STAT,
+          risk_score
+          ) %>%
+  mutate(label = "METABRIC")
 
-# 7.3 Loop that creates data frame with true positive and falsa positives of each time point
+
+# 7.2 Loop that creates data frame with true positive and falsa positives of each time point
 
 plot_roc <- map_df(c(12, 36, 60, 72, 120), function(i){
   
@@ -339,12 +340,13 @@ proof_genes_pt.cox <-
          LYMPH = LYMPH_NODES_EXAMINED_POSITIVE,
          AGE = as.numeric(AGE_AT_DIAGNOSIS ),
          MENO = INFERRED_MENOPAUSAL_STATE    ,
-         SCORE = test_pred$.pred_linear_pred, # This one is the score of the model
+         SCORE = test_data$risk_score, # This one is the score of the model
          HORMONE = HORMONE_THERAPY ,
          CHEMO = CHEMOTHERAPY,
          SURGERY = BREAST_SURGERY,
          PAM50 = CLAUDIN_SUBTYPE,
-         NPI = NPI
+         NPI = NPI,
+         HIST = HISTOLOGICAL_SUBTYPE
   ) %>% 
   dplyr::select(all_of(proof_genes),
                 surv_obj,
@@ -360,7 +362,8 @@ proof_genes_pt.cox <-
                 INTCLUST, 
                 EVENT_STAT,
                 EVENT_MON,
-                NPI) %>%  
+                NPI,
+                HIST) %>%  
   na.omit()
 
 # 8.3 Multivariate cox comparing the variables including the score to test its independent value
@@ -369,7 +372,7 @@ proof_genes_pt.cox <-
 coxph(surv_obj ~ AGE + LYMPH + SCORE, 
       data = proof_genes_pt.cox)
 
-cox_model <- coxph(surv_obj ~ NPI + HORMONE + CHEMO + SURGERY + MENO + HER2 + AGE + LYMPH + SCORE +  PAM50 + INTCLUST, 
+cox_model <- coxph(surv_obj ~ NPI + HORMONE + CHEMO + SURGERY + MENO + strata(HER2) + AGE + LYMPH + SCORE +  PAM50 + INTCLUST + HIST, 
                    data = proof_genes_pt.cox)
 
 summary(coxph(surv_obj ~ MENO + AGE + LYMPH + SCORE, 
@@ -388,7 +391,7 @@ independent_prog <- cox_model %>%
 
 # 9.1 Index number of the parameters to print the evaluation and to g   raph
 
-num_param_compare <- c(9:21)
+num_param_compare <- c(2:50)
 
 # 9.2 Concatenate strings with the respective result
 
@@ -396,7 +399,7 @@ cat(paste0("Signature with ", length(coef_tbl$term), " genes (", paste(coef_tbl$
     paste0("The selected parameters were an alpha of ", best_params$mixture, " and a lambda of ", best_params$penalty),
     paste0("The signature got a C-score of ", concordance$concordance),
     paste0("HR of ", round(summary_cox$coefficients[2], 2), " (CI 95% of ", round(summary_cox$conf.int[3], 2), " - ", round(summary_cox$conf.int[4], 2), " pval ", summary_cox$coefficients[5], ")"),
-    paste0("AUC at 1 year of ", round(auc[1,], 2), " at 3 years of ", round(auc[2,], 2), " at 5 years of ", round(auc[3,], 2), " at 7 years of ", round(auc[4,], 2), " and at 10 years of ", round(auc[5,], 2)),
+    paste0("AUC at 1 year of ", round(time_roc$AUC[1], 2), " at 3 years of ", round(time_roc$AUC[2], 2), " at 5 years of ", round(time_roc$AUC[3], 2), " at 7 years of ", round(time_roc$AUC[4], 2), " and at 10 years of ", round(time_roc$AUC[5], 2)),
     paste0("As an independence factor it has an HR of ", round(independent_prog$estimate[independent_prog$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog$conf.low[independent_prog$term == "SCORE"], 2), " - ", round(independent_prog$conf.high[independent_prog$term == "SCORE"], 2), " pval of ", independent_prog$p.value[independent_prog$term == "SCORE"], ")"),
     sep = ". "
 )
@@ -420,5 +423,6 @@ independent_prog %>%
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
   theme_minimal()
+
 
 
