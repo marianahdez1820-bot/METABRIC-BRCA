@@ -5,6 +5,8 @@
   library(org.Hs.eg.db)
   library(survival)
   library(paletteer)
+  library(UCSCXenaTools)
+  
   
   
   
@@ -38,7 +40,7 @@
     column_to_rownames("X")
   
   
-  # 1.4 Convert to data frame
+  # 1.4 Convert to data frmae
   
   brca_data <- brca_matrix %>% 
     as.data.frame()
@@ -107,8 +109,7 @@
   
   # 2.- Metadata ------------------------------------------------------------
   
-  library(UCSCXenaTools)
-  
+ 
   
   # 2.1 Generate and Query
   
@@ -258,6 +259,23 @@
   refined_data_unique <- 
     refined_data_unique[refined_data_unique$sampleID %in% rownames(proof_genes_pt.tcga),]
   
+  refined_data_unique <- 
+    refined_data_unique %>% 
+    mutate(
+      HER2 = lab_proc_her2_neu_immunohistochemistry_receptor_status,
+      LYMPH = as.numeric(lymph_node_examined_count),
+      PAM50 = PAM50Call_RNAseq,
+      AGE = as.numeric(Age_at_Initial_Pathologic_Diagnosis_nature2012),
+      RADIO = radiation_therapy,
+      SURGERY = factor(breast_carcinoma_primary_surgical_procedure_name),
+      NEO = history_of_neoadjuvant_treatment,
+      OTHER_TX = additional_pharmaceutical_therapy,
+      TARG_TX = targeted_molecular_therapy,
+      HER2 = HER2_Final_Status_nature2012,
+      MENO = menopause_status,
+      HIST = histological_type,
+      INTCLUST = Integrated_Clusters_with_PAM50__nature2012
+    )
   
   all(rownames(proof_genes_pt.tcga) == refined_data_unique$sampleID)
   
@@ -269,10 +287,10 @@
     left_join(refined_data_unique, by = "sampleID") %>%  # Join counts with metadata
     column_to_rownames("sampleID") %>% 
     dplyr::select(all_of(proof_genes),  # Keep all the genes to ve evaluated and the oucome variables
-                  RECURRENCE_MON, # SURVIVAL_MON for survival and RECURRENCE_MON for recurrence
-                  RECURRENCE) %>% # SURVIVAL for survival and RECURRENCE for recurrence
-    dplyr::rename(EVENT_STAT = RECURRENCE, # Rename to common term (EVENT_STAT for event and EVENT_MON for time of follow up)
-           EVENT_MON = RECURRENCE_MON) %>% 
+                  SURVIVAL_MON, # SURVIVAL_MON for survival and RECURRENCE_MON for recurrence
+                  SURVIVAL) %>% # SURVIVAL for survival and RECURRENCE for recurrence
+    dplyr::rename(EVENT_STAT = SURVIVAL, # Rename to common term (EVENT_STAT for event and EVENT_MON for time of follow up)
+           EVENT_MON = SURVIVAL_MON) %>% 
     mutate(EVENT_STAT = as.numeric(EVENT_STAT),
            EVENT_MON = as.numeric(EVENT_MON)
            ) %>%  
@@ -286,13 +304,13 @@
     )
   
   
-  outcome_analyzed <- "RECURRENCE" # To print at the end so as to ot get confused to what is being analyzed
+  outcome_analyzed <- "SURVIVAL" # To print at the end so as to ot get confused to what is being analyzed
   
   if(outcome_analyzed == "RECURRENCE"){
     proof_genes_pt.tcga <- 
       proof_genes_pt.tcga %>% 
       filter(EVENT_MON >= 2 & EVENT_MON <= 180)
-    print("Recurrene signature, filtered")
+    print("Recurrene singature, filtered")
   }else{
     "Survival signature, no filter"
 }
