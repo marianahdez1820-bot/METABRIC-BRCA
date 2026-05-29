@@ -50,7 +50,10 @@ lr_mod <- proportional_hazards(
   penalty = tune(),    # lambda establishes the severith of the penalty
   mixture = tune()     # alpha establishes the type, 1 being lasso, 0 being ridge, and 0.5 being elasticnet
 ) %>%
-  set_engine("glmnet") # Engine that permits penalizing by elasticnet, ridge, and lasso
+  set_engine("glmnet", # Engine that permits penalizing by elasticnet, ridge, and lasso
+            cox.ties = "efron") 
+
+
 
 # 2.3 Workflow
 
