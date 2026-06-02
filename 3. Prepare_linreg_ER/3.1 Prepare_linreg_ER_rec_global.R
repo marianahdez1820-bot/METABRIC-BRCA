@@ -1,5 +1,7 @@
 library(survival)
 
+# In this file we prepare the data for the linear regression model using onl ER+ patients
+# and with recurrence parameters
 
 label <- "For predicting recurrence in ER+ patients from METABRIC cohort"
 
