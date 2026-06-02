@@ -50,10 +50,6 @@ boruta_df_small <- boruta_df[, c(top_genes, "surv_obj")]
 
 colnames(boruta_df_small) <- make.names(colnames(boruta_df_small))
 
-write.csv(boruta_df_small, "C:/R/METABRIC/Files/Boruta/boruta_df.csv")
-
-x <- read.csv("C:/R/METABRIC/Files/Boruta/boruta_df.csv")
-
 # 6. Parallel Function  ---------------------------------
 
 impRangerSurv <- function(x, y, ...) {
