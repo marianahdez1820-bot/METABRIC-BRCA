@@ -11,9 +11,7 @@ ml_metadata <- er_patients_recu
 
 # 1.2 List of genes to use (check dictionary below to understand the different variables that are used)
 
-proof_genes <- make.names(common_genes_meta.gse2034) # common_genes_meta.gse2034  #boruta_signature # #significant_genes #$term # significant_genes$term  #fused_signature #rownames(res_sig) #common_genes
-# significant_genes$term %>% 
-#   cat(sep = ", ")
+proof_genes <- make.names(boruta_signature) 
 
 
 # 1.3 Object with all the patients ER + and expression of only the genes of interest
