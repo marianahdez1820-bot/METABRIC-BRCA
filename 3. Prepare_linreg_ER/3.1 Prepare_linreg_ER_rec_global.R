@@ -3,38 +3,6 @@ library(survival)
 
 label <- "For predicting recurrence in ER+ patients from METABRIC cohort"
 
-# boruta_signature_27 <- c("S100P", "CDCA5", "PTTG1", "UHRF1", "CCNB2", "NKX2.2", "CENPF", "KIF20A", "TPX2",
-#   "FAM83D", "CTTN", "RACGAP1", "CYB5D2", "TDG", "STAT5A", "SPRY4", "SYNC", "CBX7",
-#   "APOBEC3B", "KIF4A", "SHMT2", "PIGV", "GTSE1", "NMRK1", "DNAJC7", "BECN1", "PEX16")
-# 
-# 
-# final_gene_signature <- as.data.frame(read_csv("~/Documents/Servicio_Social/R.project/MyRProject/METABRIC_project/500/final_gene_signature.csv"))
-
-
-
-# boruta_signature_49 <- c("LAD1", "UBE2C", "CDC20", "NR2F1", "CDCA5", "PTTG1",
-#                          "UHRF1", "CCNB2", "NUSAP1", "ASPM", "SLC4A8", "CENPF",
-#                          "LTO1", "TRIB2", "KIF20A", "SAPCD2", "PBX1", "TPX2",
-#                          "TROAP", "PPFIA1", "CTTN", "EXO1", "AFMID", "INTS4",
-#                          "RACGAP1", "COL4A1", "DBN1", "CKAP2L", "FOXM1", "SMC4",
-#                          "DNAJB9", "STAT5A", "STIL", "NT5DC2", "MRPL27", "SPRY4",
-#                          "ARPC1B", "SUMF2", "STIP1", "PPP1R14B", "FANCD2", "SLC7A4",
-#                          "KIF4A", "GTF3C1", "TRIM37", "HSP90AB1", "SHMT2", "TCF3", "MXD3")
-
-# boruta_signature_35 <- c(
-#   "LAD1", "UBE2C", "CDC20", "NR2F1", "CDCA5", "PTTG1", "UHRF1", "CCNB2", "NUSAP1",
-#   "ASPM", "CENPF", "LTO1", "TRIB2", "KIF20A", "TPX2", "TROAP", "CTTN", "EXO1",
-#   "INTS4", "COL4A1", "DBN1", "FOXM1", "SMC4", "DNAJB9", "STAT5A", "NT5DC2",
-#   "MRPL27", "SPRY4", "ARPC1B", "SUMF2", "PPP1R14B", "SLC7A4", "GTF3C1", "HSP90AB1", "SHMT2")
-
-
-
-# common_genes_meta.gse2034 <- c("NR2F1", "TRIB2", "STAT5A", "LAD1", "TRIM37", "SPRY4", "COL4A1",
-#                                "CTTN", "CCNB2", "GTF3C1", "HSP90AB1", "PPFIA1", "SLC7A4", "RACGAP1",
-#                                "PBX1", "DBN1", "NUSAP1", "SLC4A8", "SMC4", "FOXM1", "DNAJB9", "ARPC1B",
-#                                "PTTG1", "KIF20A", "NT5DC2", "STIP1", "PPP1R14B", "MXD3", "EXO1", "ASPM",
-#                                "STIL", "TROAP", "CDC20", "UBE2C", "TPX2", "CENPF", "TCF3", "SHMT2", "KIF4A")
-
 
 # 1.- Preparing metadata --------------------------------------------------
 
