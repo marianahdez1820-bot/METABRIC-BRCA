@@ -281,12 +281,17 @@ cox_p_tcga <- independent_prog.tcga %>%
   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
-  theme_classic(base_size =15) +
+  theme_classic(base_size = 22) +
   ggtitle("Multivariate Cox: Survival TCGA") +
   theme(plot.title = element_text(hjust = 0.5),
-        legend.position = "none") + 
+        legend.background = element_rect(color = "black", fill = "white", linewidth = 0.5), 
+        legend.box.background = element_rect(color = "black", linewidth = 1),
+        legend.key = element_rect(color = "gray80", linewidth = 0.5)) + 
   scale_color_manual(values = c("FALSE" = "#68228b", "TRUE" = "#3477FD")) + 
-  labs(x = "Hazard Ratio (log scale)", y = "Clinical & Molecular Features", color = "Significance (p < 0.05)")
+  labs(x = "Hazard Ratio (log scale)", 
+       y = "Clinical & Molecular Features", 
+       color = "Significance (p < 0.05)",
+       tag = "B")
 
 
 # 5.- Other analysis ------------------------------------------------------
@@ -295,12 +300,12 @@ cox_p_tcga <- independent_prog.tcga %>%
 # 5.1.2 Boxplot comparing to PAM50 facet wrapped by event status
 
 
-score_subtype_tcga <- ggplot(proof_genes_pt.tcga.cox, aes(y = SCORE, x = PAM50, fill = PAM50)) +
+score_subtype_tcga <- ggplot(proof_genes_pt.tcga.cox %>% drop_na(PAM50), aes(y = SCORE, x = PAM50, fill = PAM50)) +
   geom_boxplot() +
   facet_wrap(~ EVENT_STAT,
              scales = "free_x",
              labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) + 
-  theme_classic(base_size = 18) + 
+  theme_classic(base_size = 22) + 
   ggtitle("Score change on subtype: TCGA") +
   theme(
     strip.background = element_rect(fill = "black", color = "black", linewidth = 1),
@@ -308,7 +313,9 @@ score_subtype_tcga <- ggplot(proof_genes_pt.tcga.cox, aes(y = SCORE, x = PAM50, 
     plot.title = element_text(hjust = 0.5),
     legend.position = "none"
   ) +
-  labs(Y = "Score", X = "Claudin Subtype") + 
+  labs(y = "Score", 
+       x = "",
+       tag = "B") + 
   scale_fill_paletteer_d("Redmonder::dPBIPuOr") 
 
 
@@ -379,7 +386,7 @@ proof_genes_pt.tcga_long <-
 # 5.3.2 Plot
 
 
-score_tx_tcga <- ggplot(data = proof_genes_pt.tcga_long, aes(y = SCORE, x = Value, fill = Value)) +
+score_tx_tcga <- ggplot(data = proof_genes_pt.tcga_long %>% drop_na(Value), aes(y = SCORE, x = Value, fill = Value)) +
   geom_boxplot() +
   facet_wrap( ~ Parameter + EVENT_STAT, scales = "free_x", ncol = 2, labeller = labeller(
     EVENT_STAT = as_labeller(c(
@@ -389,16 +396,19 @@ score_tx_tcga <- ggplot(data = proof_genes_pt.tcga_long, aes(y = SCORE, x = Valu
   )) +
   scale_fill_paletteer_d("khroma::iridescent", direction = - 1,
                          labels = function(x) str_to_title(x)) + 
-  theme_classic(base_size = 11) +
-  labs(x = "Treatment/Parameter Value", fill = "Treated") +
+  theme_classic(base_size = 15) +
+  labs(x = "Treatment modality", 
+       y = "",
+       fill = "Treated",
+       tag = "B") +
   scale_x_discrete(labels = c("0" = "Untreated", "1" = "Treated")) +
   ggtitle("Score change on treatment: TCGA") +
   theme(
     strip.background = element_rect(fill = "black", color = "black", linewidth = 1),
     strip.text = element_text(color = "white", face = "bold", size = 12),
     plot.title = element_text(hjust = 0.5),
-    legend.position = "none"
-    
+    legend.position = "none",
+    axis.text.x = element_text(angle = 22, hjust = 1, vjust = 1)
   )
 
 # 5.4 Cox based on treatment
