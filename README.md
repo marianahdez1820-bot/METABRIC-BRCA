@@ -70,7 +70,7 @@ Runs the Boruta feature selection algorithm for signature creation
   * Main paper findings derive from `summary_cox` and `independent_prog`.
   * Generates downstream analysis objects `proof_genes_pt.cox` (test data with metadata),  `final_fit` (trained model), `true_cut` (cutpoint obtained from *surv_cutpoint()*) and image generation inputs (`fit_km`, `plot_roc`, `facet_labels`, `cox_p_metabric`) utilized later in folder `7. Images`.
 
-#### `4.2 Further_analysis`
+#### 4.2 Further_analysis
 > **Section Workflow:** This section involves 3 scripts focused on identifying potential biases and causes for misclassification
 
 ##### `4. Cox Regression/4.2 Further_analysis/4.2.1 Bias analysis.R`
@@ -106,7 +106,7 @@ Runs the Boruta feature selection algorithm for signature creation
 
 **Output on all 3 cases of data preparation:** All preparation files output an object called `proof_genes_pt.` with the dot followed by the database name in underscore (`proof_genes_pt.tcga`, `proof_genes_pt.gse2034` and `proof_genes_pt.gse96058`). This object same as with `proof_genes_pt` from `3. Signature Preparation` consists on the patients on rows and scaled and centered genes on columns as well ad the outcome variables which are ignored to the model because of tidymodels recipe specification given at `4. Cox Regression/4.1 Cox_regression_global.R`. It also outputs metadata in differing named objects specified in each subsection
 
-#### `5.1 GSE2034`
+#### 5.1 GSE2034
 
 ##### `5.1.1 GSE2034_prep`
 * **Purpose:** Download, untar and read cel files followed by metadata preprocessing and count data preprocessing and finally prepares the object used for testing the signature. GSE2034 was only used for recurrence pipeline
@@ -119,7 +119,7 @@ Runs the Boruta feature selection algorithm for signature creation
 * **Function:** Once again if everything was ran as stated the script should run smoothly
 * **Results and outputs:** The main results are found in **line 17 (Section 1.3)** for C-index under the object `c_index_summary.gse2034`, **line 97 (Section 2.1.2)** under the object `auc_ci.gse2034` for AUC, for the division into high and low risk groups under `summary_gse2034` on **line 82 (Section 1.8)**, and finally for the cox with the 70 months division on **line 214 (section 3.3)** under `independent_prog.gse2034`. Other output objects are needed for later plotting mainly `plot_roc.gse2034`, `facet_labels.gse2034`, `global_roc.gse2034` and `cox_p_gse2034`.
 
-#### `5.2 GSE96058`
+#### 5.2 GSE96058
 
 ##### `5. Validation/5.2 GSE96058/5.2.1 GSE96058_prep.R`
 * **Purpose:** Download files, followed by metadata and count data preprocessing, finally prepares the object used for testing the signature. GSE96058 was only used for survival pipeline
@@ -133,7 +133,7 @@ Runs the Boruta feature selection algorithm for signature creation
 * **Results and outputs:** The main results are found in **line 87 (Section 2.6)** for C-index under the object `c_index_summary.gse96058`, **line 114 (Section 2.6.2)** under the object `auc_ci.gse96058` for AUC, for the division into high and low risk groups under `summary_gse96058` on **line 77 (Section 2.4)**, for the multivariate Cox on **line 260 (Section 3.2)** under `independent_prog.gse96058`. On **Section 4.5** the objective is to apply the wilcoxon test, change **Line 352 and 353** to the parameter to be evaluated (HORMONE, CHEMO or PAM50). Finally **Line 410** outputs the cox model interaction between score and treatment.
   * Other output objects are needed for later plotting mainly `plot_roc.gse96058`, `facet_labels.gse96058`, `global_roc.gse96058` and `cox_p_gse96058`, `score_subtype_gse96058`, `score_tx_gse96058`.
 
-#### `5.3 TCGA`
+#### 5.3 TCGA
 
 > **Section summary:** This is the one that requires most atention since TCGA functions as both survival and recurrence in the end of the preparation spetial atention should be given.
 
@@ -154,4 +154,67 @@ Runs the Boruta feature selection algorithm for signature creation
 
  ### 6. Enrichment
 
- > **Section summary:** This section consists on differential expresison and enrichment analysis. Its sibdivided into 2 sections, the first is for the enrichment of the signatures and the second is for the analysis comparing groups of the misclassification analysis
+ > **Section summary:** This section consists on differential expresison and enrichment analysis. Its sibdivided into 2 sections, the first is for the enrichment of the signatures and the second is for the analysis comparing groups of the misclassification analysis. No changes have to be made independently of if the pipeline run up to this point is survival or recurrence.
+
+#### `6. Enrichment/6.1 Sig_GO_enrich`
+
+* **Enrichment:** This script is to evaluate enriched pathways in the signatures
+* **Change:** Line 20 to the desired p value threshold (remembering that in the paper on the survival signature the threshold was changed to 0.1 after 0.05 evaluated no enriched pathways).
+
+#### 6.2 Misclassificatio_enrich_analysis
+
+ > **Section summary:** This section consists on differential expresison comparing groups of the misclassification analysis and the following GSEA. Only modifications have to be made by the user on the differential expression, the rest should run smoothly. to evaluate each group completely both `6.2.1 Differential_expression_misclass.R` and `6.2.2 GSEA_misclass.R` have to be run one after the other before running `6.2.1 Differential_expression_misclass.R` again with another comparison since on this script the filtering changes
+
+##### `6. Enrichment/6.2 Misclassificatio_enrich_analysis/6.2.1 Differential_expression_misclass.R`
+
+* **Purpose:** Identify differentially expressed genes in the groupsbeing compared and if those genes form part of the signature.
+* **User interaction:** There are 3 analysis that were made and we explain the change in script to replicate them. All changes are donde on **Line 13 (Section 1.1)**
+   * Unexpected event group vs Correctly classified group: To achieve this comparison **Line 13** should be filter(!(BIAS == 1 & EVENT_STAT == 0)) so as to eliminate the exceptional event groupand keep the rest.
+   * Exceptionalk event group vs Correctly classified group: In this case the **Line 13** should be filter(!(BIAS == 1 & EVENT_STAT == 1)) so as to eliminate the unexpected event group and compare the rest.
+   * Unexpected event group  Exceptional event group: the **Line 13** should be filter(!(BIAS == 0)) and the comments in **Lines 14, 15 and 16** should be enabled.
+ > **CAUTION:** If the final comparison is performed don´t forget to convert **Lines 14, 15 and 16** to comment
+
+##### `6. Enrichment/6.2 Misclassificatio_enrich_analysis/6.2.2 GSEA_misclass.R`
+* **Purpose:** To apply the GSEA to the patients of the desired comparison.
+* **Input:** Object from `6.2.1 Differential_expression_misclass.R` called `res` which contains the log fold changes so that genes can be ranked for the GSEA.
+
+ ### 7. Images
+
+ > **Section summary:** Utilizes objects created on the other scripts to combine images used in the paper
+
+
+---
+### R version and package versions
+
+#### R version
+R version 4.5.2 (2025-10-31)
+
+#### Package versions
+
+| Package | Version | Repository / Website |
+|----------|---------|---------|
+| Boruta | 9.0.0 | [GitLab](https://gitlab.com/mbq/Boruta/) |
+| survival | 3.8.6 | [GitHub](https://github.com/therneau/survival) |
+| ranger | 0.18.0 | [Website](https://imbs-hl.github.io/ranger/) · [GitHub](https://github.com/imbs-hl/ranger) |
+| tidyverse | 2.0.0 | [Website](https://tidyverse.tidyverse.org) · [GitHub](https://github.com/tidyverse/tidyverse) |
+| limma | 3.66.0 | [Website](http://bioinf.wehi.edu.au/limma) |
+| censored | 0.3.4 | [Website](https://censored.tidymodels.org) · [GitHub](https://github.com/tidymodels/censored) |
+| survminer | 0.5.2 | [Website](https://rpkgs.datanovia.com/survminer/index.html) |
+| broom | 1.0.13 | [Website](https://broom.tidymodels.org/) · [GitHub](https://github.com/tidymodels/broom) |
+| logistf | 1.26.1 | [GitHub](https://github.com/georgheinze/logistf) |
+| tidymodels | 1.5.0 | [Website](https://tidymodels.tidymodels.org) · [GitHub](https://github.com/tidymodels/tidymodels) |
+| doParallel | 1.0.17 | [GitHub](https://github.com/RevolutionAnalytics/doparallel) |
+| foreach | 1.5.2 | [GitHub](https://github.com/RevolutionAnalytics/foreach) |
+| UCSCXenaTools | 1.7.0 | [Website](https://docs.ropensci.org/UCSCXenaTools/) · [GitHub](https://github.com/ropensci/UCSCXenaTools) |
+| timeROC | 0.4.1 | [CRAN](https://doi.org/10.32614/CRAN.package.timeROC) |
+| org.Hs.eg.db | 3.22.0 | [Bioconductor](https://doi.org/10.18129/B9.bioc.org.Hs.eg.db) |
+| clusterProfiler | 4.18.4 | [Bioconductor](https://doi.org/10.18129/B9.bioc.clusterProfiler) |
+| AnnotationDbi | 1.72.0 | [Bioconductor](https://doi.org/10.18129/B9.bioc.AnnotationDbi) |
+| GEOquery | 2.78.0 | [Bioconductor](https://doi.org/10.18129/B9.bioc.GEOquery) |
+| hgu133a.db | 3.13.0 | [Bioconductor](https://doi.org/10.18129/B9.bioc.hgu133a.db) |
+| oligo | 1.74.0 | [Bioconductor](https://doi.org/10.18129/B9.bioc.oligo) |
+| SummarizedExperiment | 1.40.0 | [Bioconductor](https://doi.org/10.18129/B9.bioc.SummarizedExperiment) |
+| TCGAbiolinks | 2.38.0 | [Bioconductor](https://doi.org/10.18129/B9.bioc.TCGAbiolinks) |
+| paletteer | 1.7.0 | [Website](https://emilhvitfeldt.github.io/paletteer/) · [GitHub](https://github.com/EmilHvitfeldt/paletteer) |
+| patchwork | 1.3.2 | [Website](https://patchwork.data-imaginist.com) · [GitHub](https://github.com/thomasp85/patchwork) |
+| ggrepel | 0.9.8 | [Website](https://ggrepel.slowkow.com/) · [GitHub](https://github.com/slowkow/ggrepel) |
