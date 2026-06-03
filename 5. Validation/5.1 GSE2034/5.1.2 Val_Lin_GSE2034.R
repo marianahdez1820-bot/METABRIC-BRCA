@@ -1,15 +1,11 @@
 library(survminer)
 library(timeROC)
-
-
 # 1.- Validation ----------------------------------------------------------
-
 # 1.1 Predict on GSE2034 set
 
 gse2034_results <- predict(final_fit, new_data = proof_genes_pt.gse2034, type = "linear_pred") %>%
   bind_cols(proof_genes_pt.gse2034 %>% 
               rownames_to_column("file_name"))
-
 
 # 1.2 Calculate the Concordance Index
 
@@ -30,8 +26,6 @@ c_index_summary.gse2034 <- data.frame(
   )
 
 print(c_index_summary.gse2034)
-
-
 
 # 1.4 Create risk groups based on the median of the predictions
 
