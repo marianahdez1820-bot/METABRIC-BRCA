@@ -229,7 +229,7 @@ proof_genes_pt.tcga.cox <-
 
 # 4.2 Actual cox model with parameters to evaluare
 
-cox_model.tcga <- coxph(surv_obj ~ SCORE + AGE + LYMPH + RADIO + NEO + TARG_TX + strata(PAM50) + strata(HER2) + strata(HIST), data = proof_genes_pt.tcga.cox)
+cox_model.tcga <- coxph(surv_obj ~ SCORE + AGE + LYMPH + strata(PAM50) + strata(HER2) + strata(HIST) + RADIO + strata(NEO) + TARG_TX, data = proof_genes_pt.tcga.cox)
 
 summary(coxph(surv_obj ~ AGE + LYMPH + SCORE  ,  data = proof_genes_pt.tcga.cox))
 
@@ -238,13 +238,36 @@ summary(coxph(surv_obj ~ AGE + LYMPH + SCORE  ,  data = proof_genes_pt.tcga.cox)
 independent_prog.tcga <- cox_model.tcga %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE)
 
+supplementary_table.tcga <- independent_prog.tcga %>%
+  mutate(
+    Feature = recode_values(term,
+                            "SCORE"              ~ "Signature Score",
+                            "LYMPH"              ~ "Lymph Node Status",
+                            "AGE"                ~ "Age at Diagnosis",
+                            "RADIOYES" ~ "Radiotherapy",
+                            "NEOYes" ~ "Neoadjuvant chemotherapy",
+                            "TARG_TXYES" ~ "Targeted treatment",
+                            default = term
+    ),
+    
+    `Hazard Ratio (HR)` = round(estimate, 3),
+    `95% Confidence Interval` = paste0(round(conf.low, 3), " – ", round(conf.high, 3)),
+    
+    `p-value` = scales::scientific(p.value, digits = 3)
+  ) %>%
+  dplyr::select(Feature, `Hazard Ratio (HR)`, `95% Confidence Interval`, `p-value`) %>%
+  arrange(`Hazard Ratio (HR)`)
+
+flextable(supplementary_table.tcga) %>%
+  autofit() 
+
 # 4.3.2 Results
 
 summary(cox_model.tcga)
 
 # 4.4 Results to paragraph 
 
-num_param_compare <- c(2:9)
+num_param_compare <- c(1:9)
 
 cat(paste0("The signature on TCGA got a C-score of ", round(c_index_results.tcga$concordance, 2)),
     paste("AUC at 1 year of ", res_auc_res_tcga$.[1], ", at 3 years of ", res_auc_res_tcga$.[2], ", at 5 years of ", res_auc_res_tcga$.[3], ", at 6 years of ", res_auc_res_tcga$.[4], ", at 10 years of ", res_auc_res_tcga$.[5]),
@@ -265,29 +288,35 @@ cox_p_tcga <- independent_prog.tcga %>%
   filter(estimate > 0.0001,
          conf.high < 100) %>%
   mutate(
-    
     term = recode_values(
       term,
-      "SCORE"              ~ "Signature Score",
-      "LYMPH"              ~ "Lymph Node Status",
-      "AGE"                ~ "Age at Diagnosis",
+      "SCORE"      ~ "Signature Score",
+      "LYMPH"      ~ "Lymph Node Status",
+      "AGE"        ~ "Age at Diagnosis",
+      "RADIOYES"   ~ "Radiotherapy",
+      "NEOYes"     ~ "Neoadjuvant chemotherapy",
+      "TARG_TXYES" ~ "Targeted treatment",
       default = term 
     ),
     term = reorder(term, p.value),
-    significant = p.value < 0.05
+    significant = factor(p.value < 0.05, levels = c("FALSE", "TRUE"))
   ) %>%
   ggplot(aes(x = estimate, y = term, color = significant)) +
-  geom_point() +
-  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
+  
+  # FIX: Add show.legend = TRUE to both geoms to force ggplot to draw the keys 
+  geom_point(show.legend = TRUE) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2, show.legend = TRUE) +
+  
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
-  theme_classic(base_size = 22) +
+  theme_classic(base_size = 15) +
   ggtitle("Multivariate Cox: Survival TCGA") +
   theme(plot.title = element_text(hjust = 0.5),
         legend.background = element_rect(color = "black", fill = "white", linewidth = 0.5), 
         legend.box.background = element_rect(color = "black", linewidth = 1),
         legend.key = element_rect(color = "gray80", linewidth = 0.5)) + 
-  scale_color_manual(values = c("FALSE" = "#68228b", "TRUE" = "#3477FD")) + 
+  scale_color_manual(values = c("FALSE" = "#68228b", "TRUE" = "#3477FD"), 
+                     drop = FALSE) + 
   labs(x = "Hazard Ratio (log scale)", 
        y = "Clinical & Molecular Features", 
        color = "Significance (p < 0.05)",
@@ -304,7 +333,7 @@ score_subtype_tcga <- ggplot(proof_genes_pt.tcga.cox %>% drop_na(PAM50), aes(y =
   geom_boxplot() +
   facet_wrap(~ EVENT_STAT,
              scales = "free_x",
-             labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) + 
+             labeller = labeller(EVENT_STAT = c("0" = "Non-recurrent", "1" = "Recurred"))) + 
   theme_classic(base_size = 22) + 
   ggtitle("Score change on subtype: TCGA") +
   theme(
@@ -314,7 +343,7 @@ score_subtype_tcga <- ggplot(proof_genes_pt.tcga.cox %>% drop_na(PAM50), aes(y =
     legend.position = "none"
   ) +
   labs(y = "Score", 
-       x = "",
+       x = "Intrinsic subtype",
        tag = "B") + 
   scale_fill_paletteer_d("Redmonder::dPBIPuOr") 
 
@@ -390,7 +419,7 @@ score_tx_tcga <- ggplot(data = proof_genes_pt.tcga_long %>% drop_na(Value), aes(
   geom_boxplot() +
   facet_wrap( ~ Parameter + EVENT_STAT, scales = "free_x", ncol = 2, labeller = labeller(
     EVENT_STAT = as_labeller(c(
-      "0" = "Alive", "1" = "Deceased")
+      "0" = "Non-recurrent", "1" = "Recurred")
     ),
     Parameter  = as_labeller(c("NEO" = "Neoadjuvant therapy", "RADIO" = "Radiotherapy", "SURGERY" = "Surgery modality", "TARG_TX" = "Targeted treatment"))
   )) +
