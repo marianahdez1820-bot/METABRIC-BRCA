@@ -20,9 +20,7 @@ This script handles the initial data pipeline:
 
 ### 2. Feature Selection
 
-#### `2. Feature selection/2.1 Boruta.R`
-Runs the Boruta feature selection algorithm for signature creation
-
+#### [`2. Feature selection/2.1 Boruta.R`](2.%20Feature%20selection/2.1%20Boruta.R)Runs the Boruta feature selection algorithm for signature creation
 > **Important Pipeline Notes:**
 > * **Analysis Mode:** The output depends on the object loaded in **Line 9**. Use `metadata.ER_POS_SURV` for survival analysis, or switch to `metadata.ER_POS_REC` for recurrence.
 > * **Gene Selection:** **Line 43 (Section 5.2)** defines the threshold for how many genes will be analyzed.
