@@ -347,7 +347,8 @@ proof_genes_pt.cox <-
          SURGERY = BREAST_SURGERY,
          PAM50 = CLAUDIN_SUBTYPE,
          NPI = NPI,
-         HIST = HISTOLOGICAL_SUBTYPE
+         HIST = HISTOLOGICAL_SUBTYPE,
+         RADIO = RADIO_THERAPY
   ) %>% 
   dplyr::select(all_of(proof_genes),
                 surv_obj,
@@ -364,7 +365,8 @@ proof_genes_pt.cox <-
                 EVENT_STAT,
                 EVENT_MON,
                 NPI,
-                HIST) %>%  
+                HIST,
+                RADIO) %>%  
   na.omit()
 
 # 8.3 Multivariate cox comparing the variables including the score to test its independent value
@@ -373,7 +375,7 @@ proof_genes_pt.cox <-
 coxph(surv_obj ~ AGE + LYMPH + SCORE, 
       data = proof_genes_pt.cox)
 
-cox_model <- coxph(surv_obj ~ NPI + HORMONE + CHEMO + strata(SURGERY) + MENO + strata(HER2) + AGE + SCORE +  PAM50 + strata(INTCLUST) + strata(HIST), 
+cox_model <- coxph(surv_obj ~ NPI + HORMONE + CHEMO + RADIO + strata(SURGERY) + MENO + strata(HER2) + AGE + SCORE +  PAM50 + strata(INTCLUST) + strata(HIST), 
                    data = proof_genes_pt.cox)
 
 summary(coxph(surv_obj ~ AGE + LYMPH + SCORE, 
@@ -386,6 +388,36 @@ summary(cox_model)
 
 independent_prog <- cox_model %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE)
+
+supplementary_table <- independent_prog %>%
+  mutate(
+    Feature = recode_values(term,
+                            "SCORE"              ~ "Signature Score",
+                            "LYMPH"              ~ "Lymph Node Status",
+                            "AGE"                ~ "Age at Diagnosis",
+                            "NPI"                ~ "Nottingham Prognostic Index",
+                            "CHEMOYES"           ~ "Chemotherapy (Yes)",
+                            "HORMONEYES"         ~ "Hormone Therapy (Yes)",
+                            "MENOPre"            ~ "Menopausal Status (Pre)",
+                            "PAM50LumA"          ~ "PAM50 Luminal A",
+                            "PAM50LumB"          ~ "PAM50 Luminal B",
+                            "PAM50Her2"          ~ "PAM50 Her2-enriched",
+                            "PAM50claudin-low"   ~ "PAM50 Claudin-low",
+                            "PAM50Normal"        ~ "PAM50 Normal-like",
+                            "RADIOYES" ~ "Radiotherapy (Yes)",
+                            default = term
+    ),
+    
+    `Hazard Ratio (HR)` = round(estimate, 3),
+    `95% Confidence Interval` = paste0(round(conf.low, 3), " – ", round(conf.high, 3)),
+    
+    `p-value` = scales::scientific(p.value, digits = 3)
+  ) %>%
+  dplyr::select(Feature, `Hazard Ratio (HR)`, `95% Confidence Interval`, `p-value`) %>%
+  arrange(`Hazard Ratio (HR)`)
+
+flextable(supplementary_table) %>%
+  autofit() 
 
 
 # 9.- Results -------------------------------------------------------------
@@ -457,8 +489,8 @@ cox_p_metabric <- independent_prog[num_param_compare, ] %>%
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
   labs(x = "Hazard Ratio (log scale)", y = "Clinical & Molecular Features", color = "Significance (p < 0.05)") +
-  theme_classic(base_size = 22) +
-  ggtitle("Multivariate Cox: Survival METABRIC") +
+  theme_classic(base_size = 17) +
+  ggtitle("Multivariate Cox: Recurrance METABRIC") +
   theme(plot.title = element_text(hjust = 0.5),
         legend.position = "none",
         ) + 
