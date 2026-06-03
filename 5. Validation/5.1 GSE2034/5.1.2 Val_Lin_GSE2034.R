@@ -4,8 +4,8 @@ library(survminer)
 
 # 1.1 Predict on GSE2034 set
 
-gse2034_results <- predict(final_fit, new_data = proof_genes_pt_gse2034, type = "linear_pred") %>%
-  bind_cols(proof_genes_pt_gse2034 %>% 
+gse2034_results <- predict(final_fit, new_data = proof_genes_pt.gse2034, type = "linear_pred") %>%
+  bind_cols(proof_genes_pt.gse2034 %>% 
               rownames_to_column("file_name"))
 
 
@@ -24,7 +24,7 @@ c_index_summary.gse2034 <- data.frame(
     conf_int_low95  = C_Index - (1.96 * SE),
     conf_int_high95 = C_Index + (1.96 * SE),
     z_stat  = (C_Index - 0.5) / SE,
-    p_value = 1 - pnorm(z_stat)
+    p_value = 2 * (1 - pnorm(abs(z_stat)))
   )
 
 print(c_index_summary.gse2034)
@@ -34,7 +34,7 @@ print(c_index_summary.gse2034)
 # Create risk groups based on the median of the predictions
 
 gse2034_results <- gse2034_results %>%
-  mutate(risk_group = as.factor(ifelse(.pred_linear_pred < median(.pred_linear_pred), "High Risk", "Low Risk"))) # median(.pred_linear_pred) # true_cut$cutpoint$cutpoint[1]
+  mutate(risk_group = as.factor(ifelse(.pred_linear_pred < true_cut$cutpoint$cutpoint[1], "High Risk", "Low Risk"))) # median(.pred_linear_pred) # true_cut$cutpoint$cutpoint[1]
 
 # Fit the KM curve
 
@@ -106,7 +106,7 @@ auc_ci.gse2034 <- data.frame(
     conf_int_low95  = AUC - (1.96 * SE),
     conf_int_high95 = AUC + (1.96 * SE),
     z_stat  = (AUC - 0.5) / SE,
-    p_value = 1 - pnorm(z_stat)
+    p_value = 2 * (1 - pnorm(abs(z_stat)))
   )
 
 # 3.1.1.3 Text
@@ -118,7 +118,7 @@ for (i in 1:5) {
 }
 
 # View the AUC values
-
+auc_gse2034 <- res_auc.gse2034$AUC 
 print(auc_gse2034)
 
 
@@ -177,7 +177,7 @@ ggplot(plot_roc.gse2034, aes(x = FP, y = TP)) +
 # Multivariate regression cox with clinical data
 
 proof_genes_pt.gse2034.cox <- 
-  proof_genes_pt_gse2034 %>% 
+  proof_genes_pt.gse2034 %>% 
   as.data.frame() %>% 
   rownames_to_column("file_name") %>% 
   left_join(metadata.gse.2034_er_pos, by = "file_name", suffix = c("", ".y")) %>%
@@ -216,12 +216,31 @@ independent_prog.gse2034 <-
   cox_model.gse2034 %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE)
 
+supplementary_table.gse2034 <- independent_prog.gse2034 %>%
+  mutate(
+    Feature = recode_values(term,
+                            "SCORE:strata(time_group)time_group=1"              ~ "Time Group 1 (>70 months)",
+                            "SCORE:strata(time_group)time_group=2"              ~ "Time Group 2 (<70 months)",
+                            default = term
+    ),
+    
+    `Hazard Ratio (HR)` = round(estimate, 3),
+    `95% Confidence Interval` = paste0(round(conf.low, 3), " – ", round(conf.high, 3)),
+    
+    `p-value` = scales::scientific(p.value, digits = 3)
+  ) %>%
+  dplyr::select(Feature, `Hazard Ratio (HR)`, `95% Confidence Interval`, `p-value`) %>%
+  arrange(`Hazard Ratio (HR)`)
 
-num_param_compare <- c(9:21)
+flextable(supplementary_table.gse2034) %>%
+  autofit() 
+
+
+num_param_compare_gse <- c(1:2)
 
 cat(paste0("The signature got a C-score of ", round(c_index_results.2034$concordance, 2)),
     paste0("an HR of ", round(summary_gse2034$coefficients[2], 2), " (CI 95% of ", round(summary_gse2034$conf.int[3], 2), " - ", round(summary_gse2034$conf.int[4], 2), " pval ", summary_gse2034$coefficients[5], ")"),
-    paste0("AUC at 3 years of ", round(auc_gse2034[1,], 2), " at 5 years of ", round(auc_gse2034[2,], 2), " and at 6 years of "),
+    paste0("AUC at 3 years of ", round(auc_gse2034[1], 2), " at 5 years of ", round(auc_gse2034[2], 2), " and at 6 years of "),
     paste0("As an independence factor it has an HR of ", round(independent_prog.gse2034$estimate[independent_prog.gse2034$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog.gse2034$conf.low[independent_prog.gse2034$term == "SCORE"], 2), " - ", round(independent_prog.gse2034$conf.high[independent_prog.gse2034$term == "SCORE"], 2), " pval of ", independent_prog.gse2034$p.value[independent_prog.gse2034$term == "SCORE"], ")"),
     sep = ". "
 )
@@ -233,174 +252,35 @@ cat(paste0("The signature got a C-score of ", round(c_index_results.2034$concord
 
 # 4.5 Forest plot ignoring values that tend to infinite
 
-independent_prog.gse2034 %>%
+cox_p_gse2034 <-  independent_prog.gse2034[num_param_compare_gse, ] %>%
   filter(estimate > 0.0001,
          conf.high < 100) %>%
   mutate(
+      term = recode_values(
+        term,
+        "SCORE:strata(time_group)time_group=1"              ~ "Time Group 1 (>70 months)",
+        "SCORE:strata(time_group)time_group=2"              ~ "Time Group 2 (<70 months)",
+        default = term ),
     term = reorder(term, p.value),
     significant = p.value < 0.05
   ) %>%
   ggplot(aes(x = estimate, y = term, color = significant)) +
   geom_point() +
-  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
+  geom_errorbar(orientation = "y", aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
-  theme_linedraw() +
-  scale_y_discrete(labels = c(
-    "SCORE:strata(time_group)time_group=1" = "Time Group 1 (>70 months)",
-    "SCORE:strata(time_group)time_group=2" = "Time Group 2 (<70 months)"
-  ))
+  theme_linedraw() + 
+  theme_classic(base_size = 15) +
+  ggtitle("Multivariate Cox: Recurrance GSE2034") +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none") + 
+  scale_color_manual(values = c("FALSE" = "#68228b", "TRUE" = "#3477FD")) +
+    labs(x = "Hazard Ratio (log scale)", 
+         y = "", 
+         color = "Significance (p < 0.05)",
+         tag = "C")
+  
 
-
-# 6.- Outlier analysis ----------------------------------------------------
-
-
-# 6.1 Utilize the fitted object to make predictions based on time
-
-# 6.1.1 Change to numeric 
-
-gse2034_results <- 
-  gse2034_results %>% 
-  mutate(EVENT_STAT = as.numeric(as.character(EVENT_STAT)))
-
-# 6.1.2 Augment on different time points
-
-model_diagnostics <- augment(
-  final_fit, 
-  new_data = gse2034_results, 
-  eval_time = c(36, 60, 120) # Times in months (3, 5, 10 years)
-)
-
-# 6.2 Create list to then add the results
-
-list <- list()
-
-
-#> 6.3 For loop that at each desired time point calculates the bias scores, extracts patients with high bias scores
-#> observe metadata of outlier patients and plot the distribution of the prediction with the actual event time
-
-for (i in c(36, 60, 120)) {
-  
-  eval_time <- i
-  
-  # 6.3.1 Unnest the predictions and find the biggest outliers on a set point and event
-  
-  outliers <- model_diagnostics %>%
-    dplyr::select(file_name, EVENT_MON, EVENT_STAT, .pred) %>%
-    unnest(.pred) %>%
-    filter(.eval_time == eval_time) %>% 
-    arrange(desc(.pred_survival)) # Siunce our signature as it goes up, the predicted mortality goes down we see which patients died early who were predicted to die late or survive
-  
-  
-  # 6.3.2 Object with metadata and score characteristics
-  
-  outlier_summary <- outliers %>%
-    inner_join(metadata.gse.2034_er_pos, by = "file_name", suffix = c("", ".drop")) %>%
-    dplyr::select(
-      file_name, 
-      .pred_survival, 
-      EVENT_STAT, 
-      EVENT_MON, 
-      BRAIN_REL, 
-      .eval_time
-    ) 
-  
-  
-  # 6.3.3 Create bias score for defined time
-  
-  outliers_bias <- outlier_summary %>%
-    mutate(
-      bias_score = (((1 - EVENT_STAT) - .pred_survival) ^ 2) * ((EVENT_MON - .eval_time) * ( 1 - 2 * (EVENT_STAT)))
-    ) %>%
-    arrange(desc(bias_score))
-  
-  # 6.4 Identify the highest bias patients
-  
-  # 6.4.1 Obtain mean and sd and then filter baed on patients higher than determined SD
-  
-  extreme_outliers <- 
-    outliers_bias %>% 
-    mutate(mean_bias = mean(bias_score),
-           sd_bias = sd(bias_score)) %>% 
-    filter(bias_score > (mean_bias + 1 * sd_bias))
-  
-  # 6.4.2 Obtain their IDs
-  
-  top_bias_ids <- extreme_outliers$file_name
-  
-  print(length(top_bias_ids))
-  
-  
-  # 6.5.1 Add a column identifying patients as top bias or not
-  
-  outliers <- 
-    outliers %>% 
-    mutate(quadrant = case_when(
-      file_name %in% top_bias_ids & EVENT_STAT == 0 ~ 2,
-      file_name %in% top_bias_ids & EVENT_STAT == 1 ~ 1,
-      TRUE ~ 0
-    ))
-  
-  print(outliers %>% 
-          group_by(EVENT_STAT) %>% 
-          dplyr::count(quadrant))
-  
-  # 6.5.2 Plot
-  
-  theme_embedded <- theme_classic(base_size = 25) + 
-    theme(
-      legend.position = c(0.95, 0.3), # Adjust coordinates (x, y) from 0 to 1
-      legend.background = element_rect(fill = alpha("white", 0.5))
-    )
-  
-  # 6.5.2.1 Plot colored by EVENT_STAT
-  
-  p1 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(EVENT_STAT), shape = factor(EVENT_STAT))) +
-    geom_point(size = 2, alpha = 0.7) + # Increased size and opacity
-    stat_ellipse(type = "t", level = 0.95) + # Adds 95% confidence ellipse
-    geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
-    scale_color_viridis_d() + 
-    labs(
-      title = "Event Status Distribution",
-      x = paste0("Actual Event Time (Months)", eval_time),
-      y = "Predicted Survival",
-      color = "Event Stat",
-      shape = "Event Stat"
-    ) +
-    theme_embedded
-  
-  # 6.5.2.2 Plot colored by quadrant
-  
-  p2 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(quadrant), shape = factor(EVENT_STAT))) +
-    geom_point(size = 2, alpha = 0.7) +
-    stat_ellipse(aes(group = quadrant), type = "t", level = 0.95) + 
-    geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
-    scale_color_viridis_d() + 
-    labs(
-      title = "Quadrant Analysis",
-      x = paste0("Actual Event Time (Months)", eval_time),
-      y = "Predicted Survival",
-      color = "Quadrant",
-      shape = "Event Stat"
-    ) +
-    theme_embedded
-  
-  # 6.5.3 Combine and stack
-  
-  print( p1 + p2)
-  
-  list[[i]] <- top_bias_ids
-  
-}
-
-
-# 2.8 Obtain patients found on all of the iterations of the for loop as top bias patients
-
-bias_interesct.gse2034 <- intersect(intersect(list[[36]], list[[60]]) , list[[120]])
-
-# 2.8.2 Similar but all unique so even if they appear once we register them
-
-bias_diff_id.gse2034 <- unique(c(list[[36]], list[[60]], list[[120]]))
 
 
 # 7.- Other scores --------------------------------------------------------
@@ -408,7 +288,7 @@ bias_diff_id.gse2034 <- unique(c(list[[36]], list[[60]], list[[120]]))
 # 7.1 Brier score
 
 eval_results.gse2034 <- final_fit %>%
-  augment(new_data = proof_genes_pt_gse2034, eval_time = c(36, 60, 120)) 
+  augment(new_data = proof_genes_pt.gse2034, eval_time = c(36, 60, 120)) 
 
 performance.gse2034 <- eval_results.gse2034 %>%
   brier_survival(truth = surv_obj, .pred)
