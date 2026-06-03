@@ -1,13 +1,17 @@
 # In this file we run the external validation for TCGA
 
+
 library(timeROC)
 library(survminer)
 library(patchwork)
 library(coxphf)
 
+
 # 1.- EXTERNAL VALIDATION ON TCGA
 
+
 # 1.1 Predict with the parameters from the fit to the TCGA data
+
 
 
 
@@ -17,14 +21,16 @@ tcga_results <- predict(final_fit, new_data = proof_genes_pt.tcga, type = "linea
 
 
 
+
 # 2.- Divide by risk groups -----------------------------------------------
+
 
 
 # 2.3 Create risk groups based on the median of the predictions or the cutpoint
 
 tcga_results <-
   tcga_results %>%
-  mutate(risk_group = factor(ifelse(.pred_linear_pred < true_cut$cutpoint$cutpoint[1], "High Risk", "Low Risk")))
+  mutate(risk_group = factor(ifelse(.pred_linear_pred < true_cut$cutpoint$cutpoint[1], "High Risk", "Low Risk"))) # median(.pred_linear_pred) # true_cut$cutpoint$cutpoint[1]
 
 # 2.3.2 Relevel so as to have low risk as reference
 
