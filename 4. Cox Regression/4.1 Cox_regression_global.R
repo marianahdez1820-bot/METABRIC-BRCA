@@ -4,6 +4,7 @@ library(survminer)
 library(broom)
 library(survival)
 library(timeROC)
+library(flextable)
 
 # Initiasurvival# Initial object late_genes.patients created in preprocessing
 # Its made so that the modifications have to be done on preprocessing so even if the
