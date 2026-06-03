@@ -10,7 +10,7 @@ The folders and files are ordered in the exact sequence they should be executed,
 
 ### 1. METABRIC Preprocessing
 
-#### `1. METABRIC preprocessing/1.1 Data preproccesing.R`
+#### [`1. METABRIC preprocessing/1.1 Data preproccesing.R`](1.1%20Data%20preproccesing.R)
 This script handles the initial data pipeline:
 * **Prerequisite:** Having the downloaded data corresponding to METABRIC metadata and counts.
 * **Steps:** Data loading $\rightarrow$ Duplicate gene management $\rightarrow$ Metadata preprocessing.
@@ -20,7 +20,10 @@ This script handles the initial data pipeline:
 
 ### 2. Feature Selection
 
-#### [`2. Feature selection/2.1 Boruta.R`](2.%20Feature%20selection/2.1%20Boruta.R)Runs the Boruta feature selection algorithm for signature creation
+#### [`2. Feature selection/2.1 Boruta.R`](2.%20Feature%20selection/2.1%20Boruta.R)
+
+> **Section Summary:**Runs the Boruta feature selection algorithm for signature creation
+
 > **Important Pipeline Notes:**
 > * **Analysis Mode:** The output depends on the object loaded in **Line 9**. Use `metadata.ER_POS_SURV` for survival analysis, or switch to `metadata.ER_POS_REC` for recurrence.
 > * **Gene Selection:** **Line 43 (Section 5.2)** defines the threshold for how many genes will be analyzed.
