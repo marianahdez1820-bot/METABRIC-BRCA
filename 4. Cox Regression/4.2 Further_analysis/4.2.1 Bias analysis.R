@@ -325,7 +325,7 @@ proof_genes_pt.long<-
   ))
 
 
-# 6.4 Wilcox test between treatment types
+# 6.5 Wilcox test between treatment types
 
 proof_genes_pt.long %>%
   dplyr::select(EVENT_STAT, Parameter, Value, SCORE) %>% 
@@ -339,7 +339,7 @@ proof_genes_pt.long %>%
   mutate(adj_p_value = p.adjust(p.value, method = "holm"),
          )
 
-# 6.5 Cox analysis of interaction between score and treatment 
+# 6.5.2 Cox analysis of interaction between score and treatment 
 
 tx_vars <- c("CHEMO", "HORMONE", "SURGERY")
 
@@ -364,7 +364,7 @@ for (i in tx_vars) {
 }
 
 
-# 6.4.3.2 Plot
+# 6.5.3 Plot
 
 score_tx <- ggplot(data = proof_genes_pt.long, aes(y = SCORE, x = Value, fill = Value)) +
   geom_boxplot() + 
