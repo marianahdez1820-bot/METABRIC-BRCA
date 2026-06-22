@@ -50,8 +50,22 @@ proof_genes_pt <-
     event = EVENT_STAT,
     type  = "right"))
 
-proof_genes_pt <- proof_genes_pt %>% 
-  mutate(across(-c(EVENT_MON, EVENT_STAT, surv_obj), scale))
+train_data <- 
+  proof_genes_pt[rownames(proof_genes_pt) %in% train_surv.id, ]
+
+test_data <- 
+  proof_genes_pt[rownames(proof_genes_pt) %in% test_surv.id, ] 
+
+
+
+train_data <- train_data %>%
+  mutate(across(all_of(proof_genes), ~ as.vector(scale(.x))))
+
+test_data <- test_data %>%
+  mutate(across(all_of(proof_genes), ~ as.vector(scale(.x))))
+
+proof_genes_pt <- proof_genes_pt %>%
+  mutate(across(all_of(proof_genes), ~ as.vector(scale(.x))))
 
 # /Dictionary/ ##########################
 #>  VARIABLES FOR 1.2 late_death.genes
