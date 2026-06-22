@@ -1,0 +1,8 @@
+library(patchwork)
+
+
+cox_p_metabric / cox_p_tcga / cox_p_gse96058
+
+score_subtype + score_subtype_tcga + score_subtype_gse96058
+
+score_tx + score_tx_tcga + score_tx_gse96058
