@@ -316,7 +316,7 @@
 }
 
   
-proof_genes_pt.tcga <- 
-    proof_genes_pt.tcga %>% 
-    mutate(across(- c(EVENT_MON, EVENT_STAT, surv_obj), scale))
+proof_genes_pt.tcga <- proof_genes_pt.tcga %>% 
+    mutate(across(-c(EVENT_MON, EVENT_STAT, surv_obj), ~ as.vector(scale(.x))))
+  
   
