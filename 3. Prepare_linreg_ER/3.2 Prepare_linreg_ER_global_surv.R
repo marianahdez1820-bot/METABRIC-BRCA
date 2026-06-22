@@ -13,9 +13,11 @@ ml_metadata <- er_patients_surv
 
 # 1.2 List of genes to use (check dictionary below to understand the different variables that are used)
 
-proof_genes <- make.names(common_genes_meta.gse96058) 
+proof_genes <- make.names(common_genes_sig) # common_genes_meta.gse96058 #common_genes_meta.tcga  
+# confirmed_only # boruta_signature #significant_genes$term #rownames(res_sig) 
 
 # 1.3 Object with ER+ patients and expression of only the genes of interest
+
 rownames(counts_data) <- make.names(rownames(counts_data))
 
 proof_genes_pt <- 
@@ -46,10 +48,23 @@ proof_genes_pt <-
     type  = "right"))
 
 
+train_data <- 
+  proof_genes_pt[rownames(proof_genes_pt) %in% train_surv.id, ]
 
-proof_genes_pt <- 
-  proof_genes_pt %>% 
-  mutate(across(- c(EVENT_MON, EVENT_STAT, surv_obj), scale))
+test_data <- 
+  proof_genes_pt[rownames(proof_genes_pt) %in% test_surv.id, ] 
+
+
+
+train_data <- train_data %>%
+  mutate(across(all_of(proof_genes), ~ as.vector(scale(.x))))
+
+test_data <- test_data %>%
+  mutate(across(all_of(proof_genes), ~ as.vector(scale(.x))))
+
+proof_genes_pt <- proof_genes_pt %>%
+  mutate(across(all_of(proof_genes), ~ as.vector(scale(.x))))
+
 
 # /Dictionary/ ##########################
 #>  VARIABLES FOR 1.2 proof_genes
