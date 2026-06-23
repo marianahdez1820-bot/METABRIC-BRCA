@@ -1,7 +1,7 @@
 library(magrittr)
 
 
-c_index_df <- bind_rows(c_index_summary, c_index_summary.tcga, c_index_summary.gse96058)
+c_index_df <- bind_rows(c_index_summary, c_index_summary.tcga, c_index_summary.gse2034)
 
 c_index_df <- 
   c_index_df %>% 
@@ -19,7 +19,7 @@ flextable(c_index_df) %>%
   autofit()
 
 
-auc_df <- bind_rows(auc_ci, auc_ci.tcga, auc_ci.gse96058)
+auc_df <- bind_rows(auc_ci, auc_ci.tcga, auc_ci.gse2034)
 
 auc_df <- 
   auc_df %>% 
@@ -32,11 +32,11 @@ auc_df <-
 flextable(auc_df) %>%
   autofit() 
 
-summary_median.gse2034 <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_group_median, data = gse2034_results))
+summary_median.gse2034 <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_group_median, data = gse2034_results %>% mutate(EVENT_STAT = as.numeric(as.character(EVENT_STAT)))))
 
-summary_median.tcga <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_group_median, data = tcga_results))
+summary_median.tcga <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_group_median, data = tcga_results %>% mutate(EVENT_STAT = as.numeric(as.character(EVENT_STAT)))))
 
-summary_median.metabric <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_group_median, data = test_data))
+summary_median.metabric <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_group_median, data = test_data %>% mutate(EVENT_STAT = as.numeric(as.character(EVENT_STAT)))))
 
 
 
