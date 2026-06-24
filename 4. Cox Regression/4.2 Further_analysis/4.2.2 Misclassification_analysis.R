@@ -22,7 +22,7 @@ model_diagnostics <- augment(
 
 outlier_time_list <- list()
 
-no_img <- 1
+no_img <- 0
 
 #> 1.3 For loop that at each desired time point calculates the misclassification scores, extracts patients with high misclassification scores
 #> observe metadata of outlier patients and plot the distribution of the prediction with the actual event time
@@ -126,9 +126,9 @@ for (i in c(36, 60, 120)) {
   # 1.7.2 Plot
   if(no_img == 0){
     
-    theme_embedded <- theme_linedraw(base_size = 25) +
+    theme_embedded <- theme_classic(base_size = 25) +
       theme(
-        legend.position = c(0.95, 0.3), # Adjust coordinates (x, y) from 0 to 1
+        legend.position = c(0.93, 0.2), # Adjust coordinates (x, y) from 0 to 1
         legend.background = element_rect(fill = alpha("white", 0.5))
       )
     
@@ -138,7 +138,12 @@ for (i in c(36, 60, 120)) {
       geom_point(size = 2, alpha = 0.7) + # Increased size and opacity
       stat_ellipse(type = "t", level = 0.95) + # Adds 95% confidence ellipse
       geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
-      scale_color_viridis_d() +
+      scale_color_manual(values = c("#DB6D00FF", "#920000FF"),
+                         labels = c("Alive", "Deceased")) + 
+      scale_shape_manual(
+        values = c(16, 17),
+        labels = c("Alive", "Deceased")
+      ) + 
       labs(
         title = "Event Status Distribution",
         x = paste0("Actual Event Time (Months)", eval_time),
@@ -154,12 +159,17 @@ for (i in c(36, 60, 120)) {
       geom_point(size = 2, alpha = 0.7) +
       stat_ellipse(aes(group = quadrant), type = "t", level = 0.95) +
       geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
-      scale_color_viridis_d() +
-      labs(
-        title = "Quadrant Analysis",
+      scale_color_manual(values = c("#006DDBFF","#490092FF",  "#B66DFFFF"),
+                         labels = c("Correct", "Early event", "No event")) + 
+      scale_shape_manual(
+        values = c(16, 17), 
+        labels = c("Alive", "Deceased")
+      ) + 
+        labs(
+        title = "Misclassification group Analysis",
         x = paste0("Actual Event Time (Months)", eval_time),
         y = "Predicted Survival",
-        color = "Quadrant",
+        color = "Groups",
         shape = "Event Stat"
       ) +
       theme_embedded
@@ -206,7 +216,25 @@ outlier_cause <- id %>%
     
     # Binary targets for your downstream regressions
     unexpected_event = ifelse(quadrant == 1, 1, 0), 
-    exceptional      = ifelse(quadrant == 2, 1, 0)
+    exceptional      = ifelse(quadrant == 2, 1, 0),
+    NPI_bin = ifelse(NPI > (mean(NPI) + 0.11),
+                     1,
+                     0),
+    age_bin = ifelse(AGE_AT_DIAGNOSIS > (mean(AGE_AT_DIAGNOSIS) + 1),
+                     1,
+                     0),
+    treatment = case_when(
+      HORMONE_THERAPY == "YES" & RADIO_THERAPY == "NO" & CHEMOTHERAPY == "NO" ~ "Hormone",
+      HORMONE_THERAPY == "NO" & (xor(RADIO_THERAPY == "YES", CHEMOTHERAPY == "YES")) ~ "Chemo|Radio",
+      HORMONE_THERAPY == "NO" & (RADIO_THERAPY == "YES" & CHEMOTHERAPY == "YES") ~ "Chemo/Radio",
+      HORMONE_THERAPY == "YES" & (xor(RADIO_THERAPY == "YES", CHEMOTHERAPY == "YES")) ~ "Hormone-Chemo/Radio",
+      HORMONE_THERAPY == "NO" & RADIO_THERAPY == "NO" & CHEMOTHERAPY == "NO" ~ "None",
+      HORMONE_THERAPY == "YES" & RADIO_THERAPY == "YES" & CHEMOTHERAPY == "YES" ~ "ALL"
+    ),
+    treatment_atall = ifelse(HORMONE_THERAPY == "NO" & RADIO_THERAPY == "NO" & CHEMOTHERAPY == "NO",
+                             "None",
+                             "Some"
+)
   )
 
 # 2.1 Comparison between groups and p val adjustment
@@ -221,7 +249,8 @@ for (a in c(1, 2)) {
   p_multiple_eval_misclass <- c(
     intclust = chisq.test(table(df_misclassification$quadrant, df_misclassification$INTCLUST), simulate.p.value = TRUE)$p.value, # Many variables unfit for fishers but because of possible sparsity we p simulate
     histology= chisq.test(table(df_misclassification$quadrant, df_misclassification$HISTOLOGICAL_SUBTYPE), simulate.p.value = TRUE)$p.value, # Same
-    hormone  = fisher.test(table(df_misclassification$quadrant, df_misclassification$HORMONE_THERAPY))$p.value, # Binary withprobaiblity of <5 variables in cells
+    intcluster = fisher.test(table(df_misclassification$quadrant, df_misclassification$HORMONE_THERAPY))$p.value,
+    hormone  = fisher.test(table(df_misclassification$quadrant, df_misclassification$intcluster))$p.value, # Binary withprobaiblity of <5 variables in cells
     chemo    = fisher.test(table(df_misclassification$quadrant, df_misclassification$CHEMOTHERAPY))$p.value,
     radio    = fisher.test(table(df_misclassification$quadrant, df_misclassification$RADIO_THERAPY))$p.value,
     claudin  = chisq.test(table(df_misclassification$quadrant, df_misclassification$CLAUDIN_SUBTYPE), simulate.p.value = TRUE)$p.value,
@@ -234,6 +263,7 @@ for (a in c(1, 2)) {
   
   adj_p_misclass_event <- p.adjust(p_multiple_eval_misclass, method = "holm")
   print(paste(" Q", a, " vs Q3 (Standard) Holm Adjusted P-values"))
+  options(scipen = 999)
   print(round(adj_p_misclass_event, 5))
   
   
@@ -263,7 +293,7 @@ for (a in c(1, 2)) {
 # 3.1 Firth penalized logistic regression on unexpectedevent group
 
 clean_unexpected_model_firth <- logistf(
-  unexpected_event ~ HORMONE_THERAPY + CLAUDIN_SUBTYPE + CHEMOTHERAPY + RADIO_THERAPY + INTCLUST + AGE_AT_DIAGNOSIS + NPI + HISTOLOGICAL_SUBTYPE,
+  unexpected_event ~ HORMONE_THERAPY + intcluster + CHEMOTHERAPY + RADIO_THERAPY + AGE_AT_DIAGNOSIS + NPI ,
   data = outlier_cause
 )
 
@@ -280,8 +310,9 @@ exp(confint(clean_unexpected_model_firth))
 
 # 3.2 MFirth penalized regression on exceptional group
 
+
 clean_exceptional_model_firth <- logistf(
-  exceptional ~ HORMONE_THERAPY + CLAUDIN_SUBTYPE + CHEMOTHERAPY + RADIO_THERAPY + intcluster + AGE_AT_DIAGNOSIS + NPI + HISTOLOGICAL_SUBTYPE,
+  exceptional ~ HORMONE_THERAPY + intcluster + CHEMOTHERAPY + RADIO_THERAPY + AGE_AT_DIAGNOSIS + NPI ,
   data = outlier_cause
 )
 
