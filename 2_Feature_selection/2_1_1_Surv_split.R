@@ -24,9 +24,3 @@ table(metadata_surv_train$EVENT_STAT)
 table(metadata_surv_test$EVENT_STAT) 
 
 intersect(train_surv.id, test_surv.id)
-
-saveRDS(counts_data, "counts_data.rds")
-saveRDS(metadata_surv_train, "metadata_surv_train.rds")
-saveRDS(metadata_surv_test, "metadata_surv_test.rds")
-saveRDS(train_surv.id, "train_surv_id.rds")
-saveRDS(test_surv.id, "test_surv_id.rds")
