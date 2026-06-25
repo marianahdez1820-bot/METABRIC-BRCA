@@ -32,8 +32,6 @@ all(rownames(proof_genes_pt) == er_patients_recu$PATIENT_ID)
   
 
 # 1.5.2 Add a column called EVENT_STAT and EVENT_MON to create the surv object
-# NOTE that this file is recurrence, it is still stored in survival so as to not have to change the 
-# linear regression file
 
 proof_genes_pt <- 
   proof_genes_pt %>% 
