@@ -50,13 +50,13 @@ This script handles the initial data pipeline:
 
 > **Section Workflow:** This section outputs the final data objects used for downstream regression. **Run either [3_Prepare_linreg_ER/3_1_Prepare_linreg_ER_rec_global.R](3_Prepare_linreg_ER/3_1_Prepare_linreg_ER_rec_global.R) OR [3_Prepare_linreg_ER/3_2_Prepare_linreg_ER_global_surv.R](3_Prepare_linreg_ER/3_2_Prepare_linreg_ER_global_surv.R)** depending on your desired analysis, followed by **[3_Prepare_linreg_ER/3_3_Hyperparameter_selection.R](3_Prepare_linreg_ER/3_3_Hyperparameter_selection.R)**.
 
-#### `3_Prepare_linreg_ER/3_1_Prepare_linreg_ER_rec_global.R` (Recurrence Path)
+#### [`3_Prepare_linreg_ER/3_1_Prepare_linreg_ER_rec_global.R`](3_Prepare_linreg_ER/3_1_Prepare_linreg_ER_rec_global.R) (Recurrence Path)
 * **Purpose:** Prepares data specifically for **recurrence analysis**.
-* **Function:** Imports the gene signature list`final_gene_names` from [`2_Feature_selection/2_1_Boruta.R`](2_Feature_selection/2_1_Boruta.R) and utilizes  `metadata_rec_train` to create `proof_genes_pt` and `ml_metadata`.
+* **Function:** Imports the gene signature list`final_gene_names` from [2_Feature_selection/2_1_Boruta.R](2_Feature_selection/2_1_Boruta.R) and utilizes  `metadata_rec_train` to create `proof_genes_pt` and `ml_metadata`.
 
-#### `3_Prepare_linreg_ER/3_2_Prepare_linreg_ER_global_surv.R` (Survival Path)
+#### [`3_Prepare_linreg_ER/3_2_Prepare_linreg_ER_global_surv.R`](3_Prepare_linreg_ER/3_2_Prepare_linreg_ER_global_surv.R) (Survival Path)
 * **Purpose:** Prepares data specifically for **survival analysis**.
-* **Function:** Imports the gene signature list`final_gene_names` from [`2_Feature_selection/2_1_Boruta.R`](2_Feature_selection/2_1_Boruta.R) and utilizes `metadata_surv_train` to create `proof_genes_pt` and `ml_metadata`.
+* **Function:** Imports the gene signature list`final_gene_names` from [2_Feature_selection/2_1_Boruta.R](2_Feature_selection/2_1_Boruta.R) and utilizes `metadata_surv_train` to create `proof_genes_pt` and `ml_metadata`.
 
 > **Object notes:**
 > * **Signature Selection:** For both scripts, **Line 16 (Section 1.2)** is where you insert your desired signature list object.
@@ -72,7 +72,7 @@ This script handles the initial data pipeline:
 
 > **Section Workflow:** Subdivided into the main model (`4.1`) and downstream analyses (`4.2`). This section automatically adapts to whichever file you ran back in Section 3, so ensure your active global objects match your intended analysis (Survival vs. Recurrence).
 
-#### `4_Cox Regression/4_1_Cox_regression_global.R`
+#### [`4_Cox_Regression/4_1_Cox_regression_global.R`](4_Cox_Regression/4_1_Cox_regression_global.R)
 * **Purpose:** Handles the METABRIC model training, and initial testing.
 * **Required Inputs:** `proof_genes_pt`, `ml_metadata`.
 * **Key Results & Outputs:** 
@@ -93,52 +93,51 @@ This script handles the initial data pipeline:
 ##### `4_2_2_Misclassification_analysis.R`
 * **Purpose:** Applies the misclassification score to patients, plots the highest scored patients, obtains clinical characteristics of these patients and finally runs 2 out of 3 important steps to identify potential causal elements that led to the misclassification (multiple characteristic analysis via chi squared, fishers test and kruskal wallis; and logistic regression penalized by Firth method).
 * **Inputs:** If all scripts have been run correctly the script should run smoothly since the input objects are `train_data` and `final_fit` (created on `4.1 Cox_regression_global.R`).
-*  **Interations:** Only at 2 points could changes be made, those being at  line 25 **(Section 1.2.2)** to stop the plots from showing each time that for loop is performed and at line 89 **(Section 1.6.1)** to change the standard deviation that functions as threshold of selecting misclassified patients.
 *  **Output objects:** The most important output object is `misclassification_diff_id ` which consist on those patients who during the for loop at the 3 time points where considered a misclassified patient at least once. This object is important for the differential expresion and GSEA analysis.
 
 ##### `4.2.3 Random_signatures.R`
 * **Purpose:** Compare the gene set obtained from Boruta against 1000 random gene sets of equal size
 * **Inputs:** If all scripts have been run correctly the script should run smoothly since the main entrance objects are `ml_metadata`, `counts_data` and `proof_genes`.
+
 ---
 
 ### 5. Validation
 
-> **Section Workflow:** This is one of the more complex sections. It is suvbdivided into 3 sections corresponding to the 3 external validation sets (**GSE2034** `5.1 GSE2034`, **GSE96058** 5.2 GSE96058, **TCGA** `5.3 TCGA`). Each section is divided into 2 subsections which correspond to the data preparation and the model testing.
+> **Section Workflow:** This is one of the more complex sections. It is suvbdivided into 3 sections corresponding to the 3 external validation sets (**GSE2034** [5_Validation/5_1_GSE2034](5_Validation/5_1_GSE2034), **GSE96058** [5_Validation/5_2_GSE96058](5_Validation/5_2_GSE96058), **TCGA** [5_Validation/5_3_TCGA](5_Validation/5_3_TCGA)). Each section is divided into 2 subsections which correspond to the data preparation and the model testing.
 
 > * The workflow depends on survival or recurrence analysis
->   * On survival run `5.2 GSE96058` and `5.3 TCGA`. The latter with specifications given in its assigned section.
->   * On recurrence run `5.1 GSE2034` and `5.3 TCGA`. Once againthe latter with specifications given in its assigned section.
+>   * On survival run [5_Validation/5_2_GSE96058](5_Validation/5_2_GSE96058) and [5_Validation/5_3_TCGA](5_Validation/5_3_TCGA). The latter with specifications given in its assigned section.
+>   * On recurrence run [5_Validation/5_1_GSE2034](5_Validation/5_1_GSE2034) and [5_Validation/5_3_TCGA](5_Validation/5_3_TCGA). Once againthe latter with specifications given in its assigned section.
 
-* **Points of user interaction in all 3 databases:** On **Line 33 (On all 3 Validaiton scripts)** change `true_cut$cutpoint$cutpoint` to `median(.pred_linear_pred)` (both found as coments on the same line) to change cutoff methods as described in the paper.
+**IMPORTANT FOR ALL 3 CASES IN DATA PREPARATION:** The only external object is `proof_genes` created on folder [3_Prepare_linreg_ER](3_Prepare_linreg_ER). If all genes on `proof_genes` can be found on the processed database, **Section 4.3 (it is the same section in all 3 validation sets)** will output "All genes in the signature are on (Name of cohort)", if not, the same section will output how many genes are missing as well as which ones are those missing genes. In both cases an object with all the common genes between the `proof_genes` object and the validation data base is created (independently of it shares all or only a few) called `common_genes_meta.` with the dot followed by the name of the database in undercase (example `common_genes_meta.tcga`). If the output is the error stating that there are missing genes the workflow consists on returning to the utilized `3. Signature Preparation` subfolder and inserting the `common_genes_meta.` into **Line 16 (Section 1.2)** and reruning the workflow from there. If instead it outpus the message stating all genes are found, one can continue with the workflow normally.
 
-**IMPORTANT FOR ALL 3 CASES IN DATA PREPARATION:** The only external object is `proof_genes` created on folder `3. Prepare_linreg_ER/3.1 Prepare_linreg_ER_rec_global.R`. If all genes on `proof_genes` can be found on the processed database, **Section 4.3 (it is the same section in all 3 validation sets)** will output "All genes in the signature are on (Name of cohort)", if not, the same section will output how many genes are missing as well as which ones are those missing genes. In both cases an object with all the common genes between the `proof_genes` object and the validation data base is created (independently of it shares all or only a few) called `common_genes_meta.` with the dot followed by the name of the database in undercase (example `common_genes_meta.tcga`). If the output is the error stating that there are missing genes the workflow consists on returning to the utilized `3. Signature Preparation` subfolder and inserting the `common_genes_meta.` into **Line 16 (Section 1.2)** and reruning the workflow from there. If instead it outpus the message stating all genes are found, one can continue with the workflow normally.
-
-**Output on all 3 cases of data preparation:** All preparation files output an object called `proof_genes_pt.` with the dot followed by the database name in underscore (`proof_genes_pt.tcga`, `proof_genes_pt.gse2034` and `proof_genes_pt.gse96058`). This object same as with `proof_genes_pt` from `3. Signature Preparation` consists on the patients on rows and scaled and centered genes on columns as well ad the outcome variables which are ignored to the model because of tidymodels recipe specification given at `4. Cox Regression/4.1 Cox_regression_global.R`. It also outputs metadata in differing named objects specified in each subsection
+**Output on all 3 cases of data preparation:** All preparation files output an object called `proof_genes_pt.` with the dot followed by the database name in underscore (`proof_genes_pt.tcga`, `proof_genes_pt.gse2034` and `proof_genes_pt.gse96058`). This object same as with `proof_genes_pt`. It also outputs metadata in differing named objects specified in each subsection
 
 #### 5.1 GSE2034
 
-##### `5.1.1 GSE2034_prep`
+##### [`5_Validation/5_1_GSE2034/5_1_1_GSE2034_prep.R`](5_Validation/5_1_GSE2034/5_1_1_GSE2034_prep.R)
+
 * **Purpose:** Download, untar and read cel files followed by metadata preprocessing and count data preprocessing and finally prepares the object used for testing the signature. GSE2034 was only used for recurrence pipeline
 * **Data procesing:** RMA normalization, anotation, duplicate gene management. Creation of `proof_genes_pt.gse2034` and scaling and centering of its gene counts.
 * **Other output:** The other important output used in subsequent files is `metadata.gse.2034_er_pos`.
 > **Note:** In the git the lines that correspond to downloading the data are annotated as comment 
 
-##### `5.1.2 Val_Lin_GSE2034.R`
+##### [`5_Validation/5_1_GSE2034/5_1_2_Val_Lin_GSE2034.R`](5_Validation/5_1_GSE2034/5_1_2_Val_Lin_GSE2034.R)
 * **Purpose:** Test on this database the trained model. Obtain both results (C-index, AUC) and model controls (Schonfeld and Martingale residuals)
 * **Function:** Once again if everything was ran as stated the script should run smoothly
-* **Results and outputs:** The main results are found in **line 17 (Section 1.3)** for C-index under the object `c_index_summary.gse2034`, **line 97 (Section 2.1.2)** under the object `auc_ci.gse2034` for AUC, for the division into high and low risk groups under `summary_gse2034` on **line 82 (Section 1.8)**, and finally for the cox with the 70 months division on **line 214 (section 3.3)** under `independent_prog.gse2034`. Other output objects are needed for later plotting mainly `plot_roc.gse2034`, `facet_labels.gse2034`, `global_roc.gse2034` and `cox_p_gse2034`.
+* **Results and outputs:** The main results are found in **line 17 (Section 1.3)** for C-index under the object `c_index_summary.gse2034`, **line 97 (Section 2.1.2)** under the object `auc_ci.gse2034` for AUC, for the division into high and low risk groups under `summary_gse2034` on **line 82 (Section 1.8)**, and finally for the cox with the 70 months division on **line 214 (section 3.3)** under `independent_prog.gse2034`. Other output objects needed for plotting `plot_roc.gse2034`, `facet_labels.gse2034`, `global_roc.gse2034` and `cox_p_gse2034`.
 
 #### 5.2 GSE96058
 
-##### `5. Validation/5.2 GSE96058/5.2.1 GSE96058_prep.R`
+##### [`5_Validation/5_2_GSE96058/5_2_1_GSE96058_prep.R`](5_Validation/5_2_GSE96058/5_2_1_GSE96058_prep.R)
 * **Purpose:** Download files, followed by metadata and count data preprocessing, finally prepares the object used for testing the signature. GSE96058 was only used for survival pipeline
 * **Data procesing:** Anotation, duplicate gene management. Creation of `proof_genes_pt.gse96058` and scaling and centering of its gene counts.
 * **Other output:** The other important output used in subsequent files is `metadata.gse96058_er_pos`.
 > **Note:** In the git the lines that correspond to downloading the data are annotated as comment
 
-##### `5.1.2 Val_Lin_GSE2034.R`
+##### [`5_Validation/5_2_GSE96058/5_2_2_Val_Lin_gse96058.R`](5_Validation/5_2_GSE96058/5_2_2_Val_Lin_gse96058.R)
 * **Purpose:** Test on this database the trained model. Obtain both results (C-index, AUC) and model controls (Schonfeld and Martingale residuals). Also run tests of Wilcoxon comparing score between vital status on different charateristics and cox model treatment interaction.
-* **Function:** Once again if everything was ran as stated the script should run smoothly although on **Section 4.5 (Lines 348 - 362)** may be changed to observe different parameters
+* **Function:** Once again if everything was ran as stated the script should run smoothly.
 * **Results and outputs:** The main results are found in **line 87 (Section 2.6)** for C-index under the object `c_index_summary.gse96058`, **line 114 (Section 2.6.2)** under the object `auc_ci.gse96058` for AUC, for the division into high and low risk groups under `summary_gse96058` on **line 77 (Section 2.4)**, for the multivariate Cox on **line 260 (Section 3.2)** under `independent_prog.gse96058`. On **Section 4.5** the objective is to apply the wilcoxon test, change **Line 352 and 353** to the parameter to be evaluated (HORMONE, CHEMO or PAM50). Finally **Line 410** outputs the cox model interaction between score and treatment.
   * Other output objects are needed for later plotting mainly `plot_roc.gse96058`, `facet_labels.gse96058`, `global_roc.gse96058` and `cox_p_gse96058`, `score_subtype_gse96058`, `score_tx_gse96058`.
 
@@ -146,14 +145,14 @@ This script handles the initial data pipeline:
 
 > **Section summary:** This is the one that requires most atention since TCGA functions as both survival and recurrence in the end of the preparation spetial atention should be given.
 
-##### `5. Validation/5.3 TCGA/5.3.1 TCGA_prep.R`
+##### [`5_Validation/5_3_TCGA/5_3_1_TCGA_prep.R`](5_Validation/5_3_TCGA/5_3_1_TCGA_prep.R)
 * **Purpose:** Download files, followed by metadata and count data preprocessing, finally prepares the object used for testing the signature. TCGA was  used for both recurrence and survival pipeline
 * **Data procesing:** Log 2 transformation, anotation, management of duplicate genes. Creation of `proof_genes_pt.tcga` and scaling and centering of its gene counts.
-* **Other output:** The other important output used in subsequent files is `  refined_data_unique`.
+* **Other output:** The other important output used in subsequent files is `refined_data_unique`.
 > **Note:** In the git the lines that correspond to downloading the data are annotated as comment
 **IMPORTANT USER INTERACTION:** To change between survival and recurrene analysis in **Lines 290 - 293 (Section 5.5)** change the selected and event objects to *SURVIVAL* and *SURVIVAL_MON*, for recurrence in those same lines change to *RECURRENCE*¨and *RECURRENCE_MON*. Also extremely important to change  **Line 307** to thedesired outcome since that determines if the recurrence filtered is applied or not. When running this script it outputs a message stating which outcome is registered in **Line 307**
 
-##### `5. Validation/5.3 TCGA/5.3.2 Val_Lin_TCGA.R`
+##### [`5_Validation/5_3_TCGA/5_3_2_Val_Lin_TCGA.R`](5_Validation/5_3_TCGA/5_3_2_Val_Lin_TCGA.R)
 * **Purpose:** Test on this database the trained model. Obtain both results (C-index, AUC) and model controls (Schonfeld and Martingale residuals). Also run tests of Wilcoxon comparing score between vital status on different charateristics and cox model treatment interaction.
 * **Function:** If everything was ran as stated the script should run smoothly 
 * **Results and outputs:** The main results are found in **line 84 (Section 2.8)** for C-index under the object `c_index_summary.tcga`, **line 111 (Section 3.1.1.2)** under the object `auc_ci.tcga` for AUC, for the division into high and low risk groups under `summary_tcga` on **line 73 (Section 2.6)**, for the multivariate Cox on **line 244 (Section 4.3)** under `independent_prog.tcga`. On this script the wilcoxon test is done on different lines dor different parameters so no changes should be made. **Line 357 (Section 5.2)** for intrinsic subtype comparison and **Line 380 (Section 5.2.2) for the different treatment varieties. Moroever **Line 451 (Section 5.4)** is the cox model interaction between score and treatment.
@@ -165,32 +164,24 @@ This script handles the initial data pipeline:
 
  > **Section summary:** This section consists on differential expresison and enrichment analysis. Its sibdivided into 2 sections, the first is for the enrichment of the signatures and the second is for the analysis comparing groups of the misclassification analysis. No changes have to be made independently of if the pipeline run up to this point is survival or recurrence.
 
-#### `6. Enrichment/6.1 Sig_GO_enrich`
+#### [`6_Enrichment/6_1_Sig_GO_enrich.R`](6_Enrichment/6_1_Sig_GO_enrich.R)
 
 * **Enrichment:** This script is to evaluate enriched pathways in the signatures
-* **Change:** Line 20 to the desired p value threshold (remembering that in the paper on the survival signature the threshold was changed to 0.1 after 0.05 evaluated no enriched pathways).
 
-#### 6.2 Misclassificatio_enrich_analysis
+#### [6_Enrichment/6_2_Misclassificatio_enrich_analysis](6_Enrichment/6_2_Misclassificatio_enrich_analysis)
 
  > **Section summary:** This section consists on differential expresison comparing groups of the misclassification analysis and the following GSEA. Only modifications have to be made by the user on the differential expression, the rest should run smoothly. to evaluate each group completely both `6.2.1 Differential_expression_misclass.R` and `6.2.2 GSEA_misclass.R` have to be run one after the other before running `6.2.1 Differential_expression_misclass.R` again with another comparison since on this script the filtering changes
 
-##### `6. Enrichment/6.2 Misclassificatio_enrich_analysis/6.2.1 Differential_expression_misclass.R`
+##### [`6_Enrichment/6_2_Misclassificatio_enrich_analysis/6_2_1_Differential_expression_misclass.R`](6_Enrichment/6_2_Misclassificatio_enrich_analysis/6_2_1_Differential_expression_misclass.R)
 
 * **Purpose:** Identify differentially expressed genes in the groupsbeing compared and if those genes form part of the signature.
-* **User interaction:** There are 3 analysis that were made and we explain the change in script to replicate them. All changes are donde on **Line 13 (Section 1.1)**
+* **User interaction:** There are 2 analysis that were made and we explain the change in script to replicate them. All changes are donde on **Line 13 (Section 1.1)**
    * Unexpected event group vs Correctly classified group: To achieve this comparison **Line 13** should be filter(!(BIAS == 1 & EVENT_STAT == 0)) so as to eliminate the exceptional event groupand keep the rest.
-   * Exceptionalk event group vs Correctly classified group: In this case the **Line 13** should be filter(!(BIAS == 1 & EVENT_STAT == 1)) so as to eliminate the unexpected event group and compare the rest.
-   * Unexpected event group  Exceptional event group: the **Line 13** should be filter(!(BIAS == 0)) and the comments in **Lines 14, 15 and 16** should be enabled.
- > **CAUTION:** If the final comparison is performed don´t forget to convert **Lines 14, 15 and 16** to comment
+   * Exceptional event group vs Correctly classified group: In this case the **Line 13** should be filter(!(BIAS == 1 & EVENT_STAT == 1)) so as to eliminate the unexpected event group and compare the rest.
 
-##### `6. Enrichment/6.2 Misclassificatio_enrich_analysis/6.2.2 GSEA_misclass.R`
+##### [`6_Enrichment/6_2_Misclassificatio_enrich_analysis/6_2_2_GSEA_misclass.R`](6_Enrichment/6_2_Misclassificatio_enrich_analysis/6_2_2_GSEA_misclass.R)
 * **Purpose:** To apply the GSEA to the patients of the desired comparison.
 * **Input:** Object from `6.2.1 Differential_expression_misclass.R` called `res` which contains the log fold changes so that genes can be ranked for the GSEA.
-
- ### 7. Images
-
- > **Section summary:** Utilizes objects created on the other scripts to combine images used in the paper
-
 
 ---
 ### R version and package versions
