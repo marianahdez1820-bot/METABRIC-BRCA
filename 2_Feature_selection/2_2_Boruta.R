@@ -123,28 +123,5 @@ saveRDS(boruta.signature, paste0(out_path, "boruta_surv_decided.rds"))
 # 2. Save the final model object
 saveRDS(final_boruta_decided, paste0(out_path, "final_boruta_surv_decided.rds"))
 
-stats <- attStats(boruta.signature)
-
-
 # 3. Get the names of all selected genes (Confirmed + Fixed Tentatives)
 final_gene_names <- getSelectedAttributes(final_boruta_decided)
-
-# 4. Save the gene list as a CSV
-write.csv(final_gene_names, paste0(out_path, "final_gene_surv_signature.csv"), row.names = FALSE)
-
-# 5. Export the importance values (the numbers used in your plot)
-stats <- attStats(final_boruta_decided)
-write.csv(stats, paste0(out_path, "gene_surv_importance_full_stats.csv"))
-
-
-# 9.- Load data ---------------------------
-
-# Load the final decided Boruta object
-final_boruta <- readRDS(paste0(out_path, "final_boruta_decided.rds"))
-
-# Verify it loaded correctly
-print(final_boruta)
-
-final_boruta_decided$finalDecision
-
-cat(final_gene_names, sep = ", ")
