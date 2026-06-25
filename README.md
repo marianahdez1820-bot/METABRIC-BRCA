@@ -1,6 +1,6 @@
 # Transcriptomic Signatures Predicting Survival and Recurrence in Estrogen Receptor-Positive Breast Cancer: A Machine Learning Analysis of the METABRIC Cohort
 
-This repository contains the pipeline for preprocessing, feature selection, hyperparameter tuning, training, and external validation, as well as misclassification and enrichment analyses for ER-positive breast cancer data.
+This repository contains the pipeline for preprocessing, feature selection, training, internal and external validation, as well as misclassification and enrichment analyses for ER-positive breast cancer data.
 
 ## Execution Order & Pipeline Structure
 
@@ -10,53 +10,61 @@ The folders and files are ordered in the exact sequence they should be executed,
 
 ### 1. METABRIC Preprocessing
 
-#### [`1. METABRIC preprocessing/1.1 Data preproccesing.R`](1.1%20Data%20preproccesing.R)
+#### [`1_METABRIC_preprocessing/1_1_Data_preproccesing.R`](1_1_Data_preproccesing.R)
 This script handles the initial data pipeline:
 * **Prerequisite:** Having the downloaded data corresponding to METABRIC metadata and counts.
 * **Steps:** Data loading $\rightarrow$ Duplicate gene management $\rightarrow$ Metadata preprocessing.
-* **Key Outputs:** Generates the core objects: `metadata.ER_POS_SURV`, `metadata.ER_POS_REC`, and `counts_data`.
+* **Key Outputs:** Generates the objects: `metadata.ER_POS_SURV`, `metadata.ER_POS_REC`, and `counts_data`.
 
 ---
 
 ### 2. Feature Selection
 
-#### [`2. Feature selection/2.1 Boruta.R`](2.%20Feature%20selection/2.1%20Boruta.R)
-
+#### [`2_Feature_selection](2_Feature_selection)
 > **Section Summary:**Runs the Boruta feature selection algorithm for signature creation
 
+* **Note:** The outputs of [2_Feature_selection/2_1_1_Surv_split.R](2_Feature_selection/2_1_1_Surv_split.R) and [2_Feature_selection/2_1_2_Rec_split.R](2_Feature_selection/2_1_2_Rec_split.R) are then utilized on various scripts but attention needs to be kept for [2_Feature_selection/2_1_Boruta.R](2_Feature_selection/2_1_Boruta.R) where the object needs to be changed depending on the outcome analyzed
+
+##### [`2_Feature_selection/2_1_1_Surv_split.R](2_Feature_selection/2_1_1_Surv_split.R)
+* **Input:** `metadata.ER_POS_SURV`
+* **Steps:** Creates random split with 80% of sample to training stratified by event status.
+* **Output:** `train_surv.id`, `metadata_surv_train `, `test_surv.id` and `metadata_surv_test`
+
+##### [`2_Feature_selection/2_1_2_Rec_split.R](2_Feature_selection/2_1_2_Rec_split.R)
+* **Input:** `metadata.ER_POS_REC`
+* **Steps:** Creates random split with 80% of sample to training stratified by event status.
+* **Output:** `train_rec.id`, `metadata_rec_train `, `test_rec.id` and `metadata_rec_test`
+
+##### [`2_Feature_selection/2_1_Boruta.R`](2_Feature_selection/2_1_Boruta.R)
 > **Important Pipeline Notes:**
-> * **Analysis Mode:** The output depends on the object loaded in **Line 9**. Use `metadata.ER_POS_SURV` for survival analysis, or switch to `metadata.ER_POS_REC` for recurrence.
+> * **Analysis:** The output depends on the object loaded in **Line 9**. Use `metadata_surv_train` for survival analysis, or switch to `metadata_rec_train ` for recurrence. The following parameters are set to the default utilized in the paper which is 7000 genes, 8 cores, 500 runs. To modify those parameters:
 > * **Gene Selection:** **Line 43 (Section 5.2)** defines the threshold for how many genes will be analyzed.
 > * **Parallelization:** Adjust **Line 67 (Section 6.2)** to allocate the number of CPU threads/cores.
 > * ** Number of runs:** **Line 90 (Section 7)** to modify the number of runs
 > * **Tentative Genes:** **Line 117** forces a final decision on tentative genes before saving results.
+* **Output:** The most important output is `final_boruta_decided` and `final_gene_names` since the first is the object with the decisions before and afeter the tetnative force and the second one is the gene list that will be utilized on [3_Prepare_linreg_ER](3_Prepare_linreg_ER)
 
 ---
 
 ### 3. Signature Preparation
 
-> **Section Workflow:** This section outputs the final data objects and optimal hyperparameters used for downstream regression. **Run either 3.1 OR 3.2** depending on your desired analysis, followed by **3.3**.
+> **Section Workflow:** This section outputs the final data objects used for downstream regression. **Run either [3_Prepare_linreg_ER/3_1_Prepare_linreg_ER_rec_global.R](3_Prepare_linreg_ER/3_1_Prepare_linreg_ER_rec_global.R) OR [3_Prepare_linreg_ER/3_2_Prepare_linreg_ER_global_surv.R](3_Prepare_linreg_ER/3_2_Prepare_linreg_ER_global_surv.R)** depending on your desired analysis, followed by **[3_Prepare_linreg_ER/3_3_Hyperparameter_selection.R](3_Prepare_linreg_ER/3_3_Hyperparameter_selection.R)**.
 
-#### `3. Prepare_linreg_ER/3.1 Prepare_linreg_ER_rec_global.R` (Recurrence Path)
+#### `3_Prepare_linreg_ER/3_1_Prepare_linreg_ER_rec_global.R` (Recurrence Path)
 * **Purpose:** Prepares data specifically for **recurrence analysis**.
-* **Function:** Imports the gene signature from Boruta step 2.1 and utilizes `metadata.ER_POS_REC` to create `proof_genes_pt` and `ml_metadata`.
+* **Function:** Imports the gene signature list`final_gene_names` from [`2_Feature_selection/2_1_Boruta.R`](2_Feature_selection/2_1_Boruta.R) and utilizes  `metadata_rec_train` to create `proof_genes_pt` and `ml_metadata`.
 
-#### `3. Prepare_linreg_ER/3.2 Prepare_linreg_ER_global_surv.R` (Survival Path)
+#### `3_Prepare_linreg_ER/3_2_Prepare_linreg_ER_global_surv.R` (Survival Path)
 * **Purpose:** Prepares data specifically for **survival analysis**.
-* **Function:** Imports the gene signature from Boruta step 2.1 and utilizes `metadata.ER_POS_SURV` to create `proof_genes_pt` and `ml_metadata`.
+* **Function:** Imports the gene signature list`final_gene_names` from [`2_Feature_selection/2_1_Boruta.R`](2_Feature_selection/2_1_Boruta.R) and utilizes `metadata_surv_train` to create `proof_genes_pt` and `ml_metadata`.
 
 > **Object notes:**
 > * **Signature Selection:** For both scripts, **Line 16 (Section 1.2)** is where you insert your desired signature list object.
 > * **`proof_genes_pt`:** This object contains patients in rows and signature genes in columns, alongside outcome columns (*EVENT_STAT*, *EVENT_MON*, and *surv_obj*). Because it does *not* contain an intrinsic label stating whether it represents survival or recurrence, be highly careful about which preparation file you ran.
 > * **`proof_genes`:** Another object with similar name and almost similar impoirtance. This object is used in many downtream analysis and forms part of the validation data preprocessing to filter only the genes that are usefull for use in the signature and to check if the validation dataset contains all the necessary genes.
 > * **`ml_metadata`:** An outcome-neutral renaming of the filtered patient metadata, allowing downstream scripts to run without manual object name changes.
-> * ** External Validation Loop (GSE2034 / GSE96058):** As noted in the paper, some signature genes may be missing in external datasets. During data preparation of either of these datasets, pass the generated `common_genes_meta.gse2034` or `common_genes_meta.gse96058` objects back into **Line 16** of either script 3.1 or 3.2 to re-run the pipeline with a fully compatible dataset-wide signature.
+> * ** External Validation Loop (GSE2034 / GSE96058):** As noted in the paper, some signature genes may be missing in external datasets. During data preparation of either of these datasets, pass the generated `common_genes_meta.gse2034`, `common_genes_meta.gse2034` or `common_genes_meta.gse96058` objects back into **Line 16** of either script 3.1 or 3.2 to re-run the pipeline with a fully compatible dataset-wide signature.
 > * **Last preprocessing step:** At this point is where the data are scaled and centered for the patients and genes that will be going into the training and initial testing.
-
-#### `3. Prepare_linreg_ER/3.3 Hyperparameter_selection.R`
-* **Purpose:** Selects hyperparameters for the Cox regression model using `proof_genes_pt`.
-* **Output:** Generates `best_params` (a tibble containing optimal parameters). 
-* **Tip:** To inspect alternative hyperparameter options instead of automatically choosing the top C-index, change `select_best()` to `show_best()` on **Line 85 (Section 3.2)**.
 
 ---
 
@@ -64,25 +72,25 @@ This script handles the initial data pipeline:
 
 > **Section Workflow:** Subdivided into the main model (`4.1`) and downstream analyses (`4.2`). This section automatically adapts to whichever file you ran back in Section 3, so ensure your active global objects match your intended analysis (Survival vs. Recurrence).
 
-#### `4. Cox Regression/4.1 Cox_regression_global.R`
-* **Purpose:** Handles the METABRIC dataset split, model training, and initial testing.
-* **Required Inputs:** `proof_genes_pt`, `ml_metadata`, and `best_params` (optional; if missing, the script recalculates the tuning grid, though this diverges from the published workflow).
+#### `4_Cox Regression/4_1_Cox_regression_global.R`
+* **Purpose:** Handles the METABRIC model training, and initial testing.
+* **Required Inputs:** `proof_genes_pt`, `ml_metadata`.
 * **Key Results & Outputs:** 
   * Main paper findings derive from `summary_cox` and `independent_prog`.
-  * Generates downstream analysis objects `proof_genes_pt.cox` (test data with metadata),  `final_fit` (trained model), `true_cut` (cutpoint obtained from *surv_cutpoint()*) and image generation inputs (`fit_km`, `plot_roc`, `facet_labels`, `cox_p_metabric`) utilized later in folder `7. Images`.
+  * Generates downstream analysis objects `proof_genes_pt.cox` (test data with metadata),  `final_fit` (trained model), `true_cut` (cutpoint obtained from *surv_cutpoint()*) and image generation inputs (`fit_km`, `plot_roc`, `facet_labels`, `cox_p_metabric`).
 
-#### 4.2 Further_analysis
+#### [4_Cox_Regression/4_2_Further_analysis](4_Cox_Regression/4_2_Further_analysis)
 > **Section Workflow:** This section involves 3 scripts focused on identifying potential biases and causes for misclassification
 
-##### `4. Cox Regression/4.2 Further_analysis/4.2.1 Bias analysis.R`
+##### [`4_Cox_Regression/4_2_Further_analysis/4_2_1_Bias_analysis.R`](4_Cox_Regression/4_2_Further_analysis/4_2_1_Bias_analysis.R)
 * **Purpose:** Identyfies multiple metrics that evaluate performance, assumptions and posible confounding factors or interactions with clinical characteristics
 * **Performance evaluation:** Calculates the C-index and AUC with acompanying confidence intervals and empirical p value after 100 refolds of Monte Carlo cross validation **(Section 5)**, also calculates Brier score **(Section 2.1)**
 * **Asumption evaluation:** Calculates Schonfeld and Martingales residuals **(Section 2.2)**. It also analyses the contribution of each gene to the score **(Section 3)**
 * **Posible confounders:** Evaluates Wilcoxon test between patient status across distinc molecular subtypes **(Section 6.4)** and treatment modalities **(Section 6.5)**. Finally it evaluates a Cox model of interaction between score and treatment **(Section 6.5.2)**.
 > **Notes:**
-> If the previous files were run correctly this script shouldnt have the need to be modified except on the labels of the plots to change from survival tu recurrence and viceversa.
+> If the previous files were run correctly this script shouldnt have the need to be modified except on the labels of the plots to change from survival to recurrence and viceversa.
 
-##### `4.2.2 Misclassification_analysis.R`
+##### `4_2_2_Misclassification_analysis.R`
 * **Purpose:** Applies the misclassification score to patients, plots the highest scored patients, obtains clinical characteristics of these patients and finally runs 2 out of 3 important steps to identify potential causal elements that led to the misclassification (multiple characteristic analysis via chi squared, fishers test and kruskal wallis; and logistic regression penalized by Firth method).
 * **Inputs:** If all scripts have been run correctly the script should run smoothly since the input objects are `train_data` and `final_fit` (created on `4.1 Cox_regression_global.R`).
 *  **Interations:** Only at 2 points could changes be made, those being at  line 25 **(Section 1.2.2)** to stop the plots from showing each time that for loop is performed and at line 89 **(Section 1.6.1)** to change the standard deviation that functions as threshold of selecting misclassified patients.
