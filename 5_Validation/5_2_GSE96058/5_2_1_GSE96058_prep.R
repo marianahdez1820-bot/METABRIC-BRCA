@@ -7,11 +7,11 @@ library(tidyverse)
 
 
 # 1.1 Download the supplementary file (The actual expression matrix)
-# getGEOSuppFiles("GSE96058", baseDir = "D:/GSE96058")
+# getGEOSuppFiles("GSE96058", baseDir = "")
 
 # 1.1.2 Read the specific expression file (SCAN-B typically provides a large .txt or .csv)
 
-raw <- read.csv("D:/GSE96058/GSE96058_gene_expression_3273_samples_and_136_replicates_transformed.csv.gz", 
+raw <- read.csv("", 
                 row.names = 1, check.names = FALSE)
 counts_data.gse96058 <- raw
 # 1.2 Download metadata.gse96058
