@@ -200,42 +200,21 @@ misclassification_diff_id <- unique(c(outlier_time_list[[36]], outlier_time_list
 
 # 2.1 Mutate characteristics to evaluate in the further analysis
 
-# 2.0 Build a clean baseline dataset entirely independent of loop artifacts
+
 outlier_cause <- id %>% 
   inner_join(ml_metadata, by = "PATIENT_ID", suffix = c("", ".drop")) %>%
   mutate(
     # Binarize IntClust to low and high grade
     intcluster = ifelse(INTCLUST %in% c("3", "4ER+", "7", "8"), "Low", "High"), 
-    
-    # Assign quadrants based on your combined list of any-timeframe outliers
-    quadrant = case_when(
+      quadrant = case_when(
       PATIENT_ID %in% misclassification_diff_id & EVENT_STAT == 1 ~ 1,
       PATIENT_ID %in% misclassification_diff_id & EVENT_STAT == 0 ~ 2,
       TRUE ~ 3
     ),
-    
-    # Binary targets for your downstream regressions
     unexpected_event = ifelse(quadrant == 1, 1, 0), 
-    exceptional      = ifelse(quadrant == 2, 1, 0),
-    NPI_bin = ifelse(NPI > (mean(NPI) + 0.11),
-                     1,
-                     0),
-    age_bin = ifelse(AGE_AT_DIAGNOSIS > (mean(AGE_AT_DIAGNOSIS) + 1),
-                     1,
-                     0),
-    treatment = case_when(
-      HORMONE_THERAPY == "YES" & RADIO_THERAPY == "NO" & CHEMOTHERAPY == "NO" ~ "Hormone",
-      HORMONE_THERAPY == "NO" & (xor(RADIO_THERAPY == "YES", CHEMOTHERAPY == "YES")) ~ "Chemo|Radio",
-      HORMONE_THERAPY == "NO" & (RADIO_THERAPY == "YES" & CHEMOTHERAPY == "YES") ~ "Chemo/Radio",
-      HORMONE_THERAPY == "YES" & (xor(RADIO_THERAPY == "YES", CHEMOTHERAPY == "YES")) ~ "Hormone-Chemo/Radio",
-      HORMONE_THERAPY == "NO" & RADIO_THERAPY == "NO" & CHEMOTHERAPY == "NO" ~ "None",
-      HORMONE_THERAPY == "YES" & RADIO_THERAPY == "YES" & CHEMOTHERAPY == "YES" ~ "ALL"
-    ),
-    treatment_atall = ifelse(HORMONE_THERAPY == "NO" & RADIO_THERAPY == "NO" & CHEMOTHERAPY == "NO",
-                             "None",
-                             "Some"
-)
+    exceptional      = ifelse(quadrant == 2, 1, 0)
   )
+
 
 # 2.1 Comparison between groups and p val adjustment
 
