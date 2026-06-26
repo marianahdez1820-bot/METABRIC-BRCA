@@ -78,8 +78,7 @@ gse2034_split <- survSplit(
 
 gse2034_split$risk_group <- relevel(gse2034_split$risk_group, ref = "Low Risk")
 
-
-summary_gse2034 <- summary(coxph(Surv(EVENT_MON,  EVENT_STAT) ~ risk_group * strata(time_group), data = gse2034_split))
+summary_gse2034 <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = gse2034_split))
 
 # 2.- Metric results ------------------------------------------------------
 
