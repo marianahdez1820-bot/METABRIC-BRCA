@@ -10,7 +10,7 @@ The folders and files are ordered in the exact sequence they should be executed,
 
 ### 1. METABRIC Preprocessing
 
-#### [`1_METABRIC_preprocessing/1_1_Data_preproccesing.R`](1_1_Data_preproccesing.R)
+#### [`1_METABRIC_preprocessing/1_1_Data_preproccesing.R`](1_METABRIC_preprocessing/1_1_Data_preproccesing.R)
 This script handles the initial data pipeline:
 * **Prerequisite:** Having the downloaded data corresponding to METABRIC metadata and counts.
 * **Steps:** Data loading $\rightarrow$ Duplicate gene management $\rightarrow$ Metadata preprocessing.
