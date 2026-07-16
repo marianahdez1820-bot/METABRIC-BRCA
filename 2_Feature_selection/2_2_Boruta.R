@@ -19,7 +19,7 @@ boruta_df <- counts_data[, boruta_metadata$PATIENT_ID] %>%
   t() %>%
   as.data.frame() %>%
   rownames_to_column("PATIENT_ID") %>%
-  left_join(boruta_metadata, by = "PATIENT_ID") %>% # Joint with metadata to have the counts, and the objects for survival analysis
+  left_join(boruta_metadata, by = "PATIENT_ID") %>% # Join with metadata to have the counts, and the objects for survival analysis
   column_to_rownames("PATIENT_ID")
 
 
