@@ -213,7 +213,7 @@
     column_to_rownames("symbol")
   
   
-  # 4.- Asigning signature genes --------------------------------------------
+  # 4.- Assigning signature genes --------------------------------------------
   
   # 4.1 List of genes described in the differential expression as being of prognosis for late death
   
